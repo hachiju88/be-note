@@ -94,6 +94,11 @@ Authorization: Bearer <JWT>
 | GET | `/masters/tasks` | タスクマスタ一覧 | staff / admin |
 | GET | `/masters/staff` | スタッフ一覧 | staff / admin |
 | GET | `/masters/slots` | 予約枠一覧 | staff / admin |
+| GET | `/reports/daily` | 日報（期間集計） | admin |
+| GET | `/materials` | 材料一覧（在庫） | admin |
+| POST | `/materials` | 材料マスタ登録 | admin |
+| GET | `/materials/{material_id}/transactions` | 入出庫履歴 | admin |
+| POST | `/materials/{material_id}/transactions` | 入出庫登録 | admin |
 
 ---
 
@@ -538,3 +543,143 @@ Response: 200
   { "slot_id": "0190a1b2-c3d4-7e80-e000-000000000001", "slot_name": "カットコース" }
 ]
 ```
+
+---
+
+## 日報（Reports）
+
+### 日報（期間集計）
+
+```
+GET /api/v1/reports/daily
+Auth: admin
+Query:
+  date_from : YYYY-MM-DD  任意（省略時は当日）
+  date_to   : YYYY-MM-DD  任意（省略時は date_from と同日）
+```
+
+会計済み（`status = 'done'`）の予約を対象に集計する。
+
+**レスポンス 200**
+
+```json
+{
+  "period": { "date_from": "2026-05-29", "date_to": "2026-05-29" },
+  "summary": {
+    "sales_total": 184000,
+    "customer_count": 12,
+    "average_spend": 15333,
+    "cancel_count": 1,
+    "no_show_count": 0
+  },
+  "payment_breakdown": [
+    { "method": "cash", "amount": 60000 },
+    { "method": "card", "amount": 100000 },
+    { "method": "qr",   "amount": 24000 }
+  ],
+  "by_staff": [
+    {
+      "staff_id": "0190a1b2-c3d4-7e80-b000-000000000001",
+      "staff_name": "店長太郎",
+      "sales": 92000,
+      "treatment_count": 6
+    }
+  ],
+  "by_menu": [
+    { "menu_name": "cut", "count": 8, "sales": 36000 }
+  ]
+}
+```
+
+> 集計元：`t_reservation`（`total` / `payment_method` / `staff_id` / `status`）、`t_menu`（スタッフ別・メニュー別）、`t_sold_item` / `t_discount`。CSV エクスポートは将来対応。
+
+---
+
+## 材料（Materials）
+
+### 材料一覧（在庫）
+
+```
+GET /api/v1/materials
+Auth: admin
+Query:
+  low_stock_only : boolean  任意（true=発注点割れのみ）
+```
+
+**レスポンス 200**
+
+```json
+[
+  {
+    "material_id": "0190a1b2-c3d4-7e80-a100-000000000001",
+    "material_name": "カラー剤A",
+    "unit": "g",
+    "current_stock": 320.0,
+    "reorder_point": 500.0,
+    "low_stock": true
+  }
+]
+```
+
+> `low_stock` は `current_stock <= reorder_point` をサーバが算出して返す。
+
+---
+
+### 材料マスタ登録
+
+```
+POST /api/v1/materials
+Auth: admin
+Body:
+{
+  "material_name" : "カラー剤A",
+  "unit"          : "g",
+  "reorder_point" : 500.0
+}
+Response: 201 { "material_id": "..." }
+```
+
+---
+
+### 入出庫履歴
+
+```
+GET /api/v1/materials/{material_id}/transactions
+Auth: admin
+Query:
+  date_from : YYYY-MM-DD  任意
+  date_to   : YYYY-MM-DD  任意
+```
+
+**レスポンス 200**
+
+```json
+[
+  {
+    "transaction_id": "0190a1b2-c3d4-7e80-a200-000000000001",
+    "transaction_type": "in",
+    "quantity": 1000.0,
+    "transaction_datetime": "2026-05-20T01:00:00Z",
+    "staff": { "staff_id": "0190a1b2-c3d4-7e80-b000-000000000001", "staff_name": "店長太郎" },
+    "memo": "定期発注分"
+  }
+]
+```
+
+---
+
+### 入出庫登録
+
+```
+POST /api/v1/materials/{material_id}/transactions
+Auth: admin
+Body:
+{
+  "transaction_type" : "out",     // 'in' | 'out' | 'adjust'
+  "quantity"         : 50.0,
+  "memo"             : "施術消費"
+}
+Response: 201 { "transaction_id": "..." }
+```
+
+- 登録時に `t_material.current_stock` を更新する（`in` は加算、`out` は減算、`adjust` は棚卸後の実数との差分を反映）。

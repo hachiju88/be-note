@@ -43,6 +43,9 @@ erDiagram
     t_be_note ||--o{ t_be_note : "p_note_id"
     t_reservation ||--o| t_staff : "staff_id"
     t_reservation ||--o| t_reservation_slot : "slot_id"
+    t_salon ||--o{ t_material : "salon_id"
+    t_material ||--o{ t_material_transaction : "material_id"
+    t_staff ||--o{ t_material_transaction : "staff_id"
 ```
 
 ---
@@ -390,6 +393,47 @@ CREATE TABLE t_photo (
 
 ---
 
+### 材料系
+
+材料管理画面（管理者）で使用する。**材料マスタ＋入出庫台帳**の構成。在庫数は台帳から算出するのが正だが、参照性能のため `t_material.current_stock` にキャッシュし、入出庫登録時に更新する。
+
+#### t_material（材料マスタ）
+
+```sql
+CREATE TABLE t_material (
+    material_id    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    salon_id       UUID         NOT NULL REFERENCES t_salon,
+    material_name  VARCHAR(50)  NOT NULL,
+    unit           VARCHAR(10)  NOT NULL,            -- '本' | 'g' | 'ml' | '個' など
+    current_stock  NUMERIC(10,2) NOT NULL DEFAULT 0, -- 現在庫（台帳から更新するキャッシュ）
+    reorder_point  NUMERIC(10,2) NOT NULL DEFAULT 0, -- 発注点。current_stock <= で低在庫アラート
+    delete_flg     BOOLEAN      NOT NULL DEFAULT false
+);
+```
+
+#### t_material_transaction（入出庫台帳）
+
+```sql
+CREATE TABLE t_material_transaction (
+    transaction_id       UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    material_id          UUID          NOT NULL REFERENCES t_material,
+    salon_id             UUID          NOT NULL REFERENCES t_salon,
+    staff_id             UUID          NOT NULL REFERENCES t_staff,  -- 操作者
+    transaction_type     VARCHAR(10)   NOT NULL,   -- 'in'（入庫）| 'out'（出庫）| 'adjust'（棚卸調整）
+    quantity             NUMERIC(10,2) NOT NULL,    -- 正の数量（type で増減を解釈。adjust は差分）
+    transaction_datetime TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    memo                 VARCHAR(100),
+    delete_flg           BOOLEAN       NOT NULL DEFAULT false
+);
+
+CREATE INDEX idx_material_tx_material
+    ON t_material_transaction (material_id, transaction_datetime);
+```
+
+> 施術（メニュー）ごとの材料消費量（BOM）連携は将来拡張。MVP は手動の入出庫登録とする。
+
+---
+
 ## インデックス一覧
 
 | テーブル | インデックス | カラム | 用途 |
@@ -397,5 +441,6 @@ CREATE TABLE t_photo (
 | `t_be_note` | `idx_be_note_client` | `(client_id, salon_id)` | Be:note一覧取得 |
 | `t_be_note` | `idx_be_note_parent` | `(p_note_id)` | 子ノード取得 |
 | `t_reservation` | `idx_reservation_staff_date` | `(staff_id, reservation_start)` | 予約管理画面・ダブルブッキングチェック |
-| `t_reservation` | `idx_reservation_status` | `(status, reservation_start)` | 予約受付画面 |
+| `t_reservation` | `idx_reservation_status` | `(status, reservation_start)` | 予約受付画面・日報集計 |
 | `t_shift` | `idx_shift_staff_date` | `(staff_id, shift_date)` WHERE `delete_flg=false` | 空き時間算出 |
+| `t_material_transaction` | `idx_material_tx_material` | `(material_id, transaction_datetime)` | 入出庫履歴・在庫算出 |
