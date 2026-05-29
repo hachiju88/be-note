@@ -89,8 +89,8 @@ CREATE TABLE t_staff (
     salon_id        UUID  NOT NULL REFERENCES t_salon,
     staff_name      VARCHAR(20)  NOT NULL,
     staff_kana      VARCHAR(20),
-    role            VARCHAR(10)  NOT NULL,
-      -- 'admin' | 'stylist' | 'assistant'
+    position        VARCHAR(10)  NOT NULL,            -- 職位: 'stylist' | 'assistant'
+    is_admin        BOOLEAN      NOT NULL DEFAULT false,  -- 管理者権限（true で JWT ロール=admin を付与）
     nomination_fee  INTEGER      NOT NULL DEFAULT 0,  -- 指名料（税込）
     delete_flg      BOOLEAN      NOT NULL DEFAULT false
 );
@@ -132,7 +132,7 @@ CREATE TABLE t_task (
     salon_id    UUID  NOT NULL REFERENCES t_salon,
     task_name   VARCHAR(20)  NOT NULL,    -- 'check_in' | 'wash' | 'cut' ...
     task_order  INTEGER      NOT NULL,    -- 列の表示順
-    role_limit  VARCHAR(10)  DEFAULT NULL -- NULL=制限なし | 'stylist'=スタイリスト以上
+    role_limit  VARCHAR(10)  DEFAULT NULL -- NULL=制限なし | 'stylist'=position が stylist のみ可
 );
 ```
 
@@ -264,11 +264,11 @@ CREATE TABLE t_be_note (
     note_id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
       -- UUID v7（クライアント生成可。来店親ノードは p_note_id = 自分自身）
     p_note_id        UUID  NOT NULL REFERENCES t_be_note(note_id),
-    version_number     INTEGER      NOT NULL DEFAULT 1,
+    note_version       INTEGER      NOT NULL DEFAULT 1,  -- note 内容の版管理（楽観ロックではない）
     note_type          SMALLINT     NOT NULL REFERENCES t_note_type(note_type_id),
     salon_id           UUID  NOT NULL REFERENCES t_salon,
     client_id          UUID  NOT NULL REFERENCES t_client,
-    responsible        UUID  NOT NULL REFERENCES t_staff(staff_id),
+    responsible        UUID  NOT NULL REFERENCES t_staff(staff_id),  -- 来店全体の主担当
     creation_datetime  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     future_flg         BOOLEAN      NOT NULL DEFAULT false,  -- true=未来の予約
     is_client          BOOLEAN,     -- textノードのみ使用（true=顧客からのメッセージ）
@@ -289,7 +289,7 @@ CREATE INDEX idx_be_note_parent ON t_be_note (p_note_id);
 CREATE TABLE t_reservation (
     note_id          UUID  PRIMARY KEY REFERENCES t_be_note,
     salon_id           UUID  NOT NULL REFERENCES t_salon,
-    staff_id           UUID  NOT NULL REFERENCES t_staff,
+    staff_id           UUID  NOT NULL REFERENCES t_staff,  -- この予約の担当スタッフ
     slot_id            UUID      REFERENCES t_reservation_slot,
     status             VARCHAR(20)  NOT NULL DEFAULT 'confirmed',
       -- 'draft'|'requested'|'pending'|'confirmed'|
@@ -307,7 +307,7 @@ CREATE TABLE t_reservation (
     cancel_reason      VARCHAR(100),
     no_show_flg        BOOLEAN      NOT NULL DEFAULT false,
     idempotency_key    UUID         UNIQUE,
-    version_no         INTEGER      NOT NULL DEFAULT 1   -- 楽観ロック
+    version_no         INTEGER      NOT NULL DEFAULT 1   -- 楽観ロック（編集競合検出。note_version とは別）
 );
 
 -- ダブルブッキング防止（DB層）
@@ -332,11 +332,12 @@ CREATE INDEX idx_reservation_status
 
 ```sql
 CREATE TABLE t_menu (
-    menu_id    UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
-    note_id  UUID  NOT NULL REFERENCES t_be_note,
-    staff_id   UUID  NOT NULL REFERENCES t_staff,
-    menu_name  VARCHAR(20)  NOT NULL,
-    kinds      VARCHAR(20),
+    menu_id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id        UUID         NOT NULL REFERENCES t_be_note,
+    menu_master_id UUID         REFERENCES t_menu_master,  -- 元メニュー（任意。追跡用）
+    staff_id       UUID         NOT NULL REFERENCES t_staff,
+    menu_name      VARCHAR(20)  NOT NULL,   -- 予約時点のメニュー名スナップショット
+    kinds          VARCHAR(20),
     memo       VARCHAR(100),
     price      INTEGER      NOT NULL,   -- 技術料＋指名料（税込）
     start_time TIME,

@@ -21,6 +21,7 @@ Authorization: Bearer <JWT>
 - JWT は Supabase Auth が発行
 - ロールクレーム（`role`）：`customer` / `staff` / `admin`
 - ロールは DB で管理し、ログイン方式（Google / Instagram / 独自）とは独立する
+- スタッフの権限は `t_staff.is_admin` から導出する（`is_admin=true` → `admin`、それ以外 → `staff`）。職位 `t_staff.position`（stylist / assistant）は権限とは独立した施術上の区分
 
 ### 日時フォーマット
 
@@ -268,6 +269,7 @@ Auth: staff / admin / customer（自分のみ）
   "menu_list": [
     {
       "menu_id": "0190a1b2-c3d4-7e80-d100-000000000001",
+      "menu_master_id": "0190a1b2-c3d4-7e80-d000-000000000002",
       "menu_name": "cut",
       "kinds": "",
       "staff": { "staff_id": "0190a1b2-c3d4-7e80-b000-000000000001", "staff_name": "店長太郎" },
@@ -399,11 +401,12 @@ Body:
   "main_menu"         : "カット＆カラー",
   "menu_list": [
     {
-      "menu_name" : "cut",
-      "kinds"     : "",
-      "staff_id"  : "0190a1b2-c3d4-7e80-b000-000000000001",
-      "memo"      : "前髪長め",
-      "price"     : 4500
+      "menu_master_id" : "0190a1b2-c3d4-7e80-d000-000000000002",
+      "menu_name"      : "cut",
+      "kinds"          : "",
+      "staff_id"       : "0190a1b2-c3d4-7e80-b000-000000000001",
+      "memo"           : "前髪長め",
+      "price"          : 4500
     }
   ]
 }
@@ -528,7 +531,8 @@ Response: 200
     "staff_id": "0190a1b2-c3d4-7e80-b000-000000000001",
     "staff_name": "店長太郎",
     "staff_kana": "テンチョウタロウ",
-    "role": "stylist",
+    "position": "stylist",
+    "is_admin": true,
     "nomination_fee": 500
   }
 ]
