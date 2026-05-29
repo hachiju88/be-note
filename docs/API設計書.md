@@ -22,6 +22,7 @@ Authorization: Bearer <JWT>
 - ロールクレーム（`role`）：`customer` / `staff` / `admin`
 - ロールは DB で管理し、ログイン方式（Google / Instagram / 独自）とは独立する
 - スタッフの権限は `t_staff.is_admin` から導出する（`is_admin=true` → `admin`、それ以外 → `staff`）。職位 `t_staff.position`（stylist / assistant）は権限とは独立した施術上の区分
+- JWT の `sub`（= `auth.users.id`）を `t_client.user_id` / `t_staff.user_id` と突き合わせてアプリ上のユーザーを特定する。`customer` の「自分のみ」ポリシーや staff/admin の認可はこの紐付けで強制する
 
 ### 日時フォーマット
 

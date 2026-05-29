@@ -86,6 +86,7 @@ CREATE TABLE t_salon (
 ```sql
 CREATE TABLE t_staff (
     staff_id        UUID  PRIMARY KEY DEFAULT gen_random_uuid(),    -- UUID v7（例）
+    user_id         UUID  UNIQUE REFERENCES auth.users(id),  -- Supabase Auth 連携（ログインユーザー）
     salon_id        UUID  NOT NULL REFERENCES t_salon,
     staff_name      VARCHAR(20)  NOT NULL,
     staff_kana      VARCHAR(20),
@@ -200,7 +201,7 @@ ALTER TABLE t_shift
   ADD CONSTRAINT no_shift_overlap
   EXCLUDE USING gist (
     staff_id WITH =,
-    tsrange((shift_date + start_time), (shift_date + end_time)) WITH &&
+    (tsrange(shift_date + start_time, shift_date + end_time)) WITH &&
   )
   WHERE (delete_flg = false);
 ```
@@ -229,6 +230,7 @@ CREATE TABLE t_reservation_slot (
 ```sql
 CREATE TABLE t_client (
     client_id    UUID  PRIMARY KEY DEFAULT gen_random_uuid(),   -- UUID v7（例）
+    user_id      UUID  UNIQUE REFERENCES auth.users(id),  -- Supabase Auth 連携。NULL=アプリ未登録の店頭顧客
     family_id    UUID       ,                -- 家族グループID（同一IDで家族を紐付け）
     client_name  VARCHAR(20)  NOT NULL,
     client_kana  VARCHAR(20)  NOT NULL,
@@ -327,7 +329,7 @@ ALTER TABLE t_reservation
   ADD CONSTRAINT no_double_booking
   EXCLUDE USING gist (
     staff_id WITH =,
-    tstzrange(reservation_start, reservation_end, '[)') WITH &&
+    (tstzrange(reservation_start, reservation_end, '[)')) WITH &&
   )
   WHERE (status IN ('confirmed', 'checked_in', 'in_progress'));
 
