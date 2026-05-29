@@ -210,7 +210,7 @@ Query:
   "data": [
     {
       "note_id": "0190a1b2-c3d4-7e80-c000-000000000100",
-      "p_note_id": "0190a1b2-c3d4-7e80-c000-000000000100",
+      "p_note_id": null,
       "note_type": "head",
       "responsible": {
         "staff_id": "0190a1b2-c3d4-7e80-b000-000000000001",
@@ -287,6 +287,8 @@ Auth: staff / admin / customer（自分のみ）
 > - `discount`：`discount_list`
 > - `photo`：`photo_list`（`storage_path` を Supabase Storage の署名付きURL に変換して返す）
 > - `text`：`is_client` / `text` / `read_flg`
+
+> **ロール別のフィールド制御**：`customer` ロールのリクエストでは、管理用フィールド（施術時間 `start_time` / `end_time`、原価系など）をレスポンスから**除外**する。クライアント側の非表示に依存せず、サーバ側でマスクする（顧客と staff/admin でレスポンススキーマを分ける）。
 
 ---
 
@@ -602,7 +604,8 @@ Auth: admin
 Response: 200   // delete_flg = true（論理削除）
 ```
 
-> `staff-skills` は複合キー（`staff_id` + `task_id`）のため、`POST`（付与）／`DELETE`（剥奪）で表現し、`PUT` は使用しない。  
+> `staff-skills` は複合キー（`staff_id` + `task_id`）のため、`PUT` は使用せず、付与＝`POST`／剥奪＝クエリ指定の `DELETE` で表現する：  
+> `DELETE /api/v1/masters/staff-skills?staff_id={staff_id}&task_id={task_id}`  
 > `t_task` の `task_order` を変更すると予約ボードの列順が変わる。
 
 ---
@@ -620,6 +623,8 @@ Query:
 ```
 
 会計済み（`status = 'done'`）の予約を対象に集計する。
+
+> **タイムゾーン**：`date_from` / `date_to` はサロンのローカルタイムゾーン（JST）として解釈する。サーバ側で JST `00:00:00`〜`23:59:59` を UTC 範囲（前日 `15:00:00Z`〜当日 `14:59:59Z`）に変換して `TIMESTAMPTZ` 列を絞り込む。日付ベースの他クエリ（`/availability` の `date`、`/reservations` の `date_from`/`date_to`）も同様。
 
 **レスポンス 200**
 
@@ -743,4 +748,7 @@ Body:
 Response: 201 { "transaction_id": "..." }
 ```
 
-- 登録時に `t_material.current_stock` を更新する（`in` は加算、`out` は減算、`adjust` は棚卸後の実数との差分を反映）。
+- `quantity` の意味は `transaction_type` で異なる：
+  - `in` / `out`：増減する**数量**（正の値）。`in` は加算、`out` は減算。
+  - `adjust`：棚卸で数えた**実在庫数（絶対値）**。サーバが `current_stock` との差分を計算して `current_stock` をその実数に更新し、台帳には差分（または実数＋種別）を記録する。
+- いずれも登録時に `t_material.current_stock` を更新する。

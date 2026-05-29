@@ -189,9 +189,20 @@ CREATE TABLE t_shift (
     delete_flg  BOOLEAN      NOT NULL DEFAULT false
 );
 
-CREATE UNIQUE INDEX idx_shift_staff_date
+-- 1日に複数シフト（中抜け・分割シフト）を許容するため一意制約は設けない。
+-- 同一スタッフの時間帯重複は排他制約で防ぐ。
+CREATE INDEX idx_shift_staff_date
     ON t_shift (staff_id, shift_date)
     WHERE delete_flg = false;
+
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+ALTER TABLE t_shift
+  ADD CONSTRAINT no_shift_overlap
+  EXCLUDE USING gist (
+    staff_id WITH =,
+    tsrange((shift_date + start_time), (shift_date + end_time)) WITH &&
+  )
+  WHERE (delete_flg = false);
 ```
 
 #### t_reservation_slot（予約枠）
@@ -257,14 +268,14 @@ CREATE TABLE t_client_salon (
 #### t_be_note（Be:note共通ヘッダ）
 
 1来店 = 1つの `head` ノードを親とする。  
-`p_note_id` が自分自身の場合は `head`（親ノード）。
+`p_note_id` が `NULL` の場合は `head`（親ノード／ルート）。
 
 ```sql
 CREATE TABLE t_be_note (
     note_id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-      -- UUID v7（クライアント生成可。来店親ノードは p_note_id = 自分自身）
-    p_note_id        UUID  NOT NULL REFERENCES t_be_note(note_id),
-    note_version       INTEGER      NOT NULL DEFAULT 1,  -- note 内容の版管理（楽観ロックではない）
+      -- UUID v7（クライアント生成可）
+    p_note_id        UUID  REFERENCES t_be_note(note_id),  -- NULL=head（親ノード／ルート）
+    note_version       INTEGER      NOT NULL DEFAULT 1,  -- 編集版番号（楽観ロック兼用。過去版は保持しない。履歴が必要なら将来 t_be_note_history を検討）
     note_type          SMALLINT     NOT NULL REFERENCES t_note_type(note_type_id),
     salon_id           UUID  NOT NULL REFERENCES t_salon,
     client_id          UUID  NOT NULL REFERENCES t_client,
@@ -421,7 +432,7 @@ CREATE TABLE t_material_transaction (
     salon_id             UUID          NOT NULL REFERENCES t_salon,
     staff_id             UUID          NOT NULL REFERENCES t_staff,  -- 操作者
     transaction_type     VARCHAR(10)   NOT NULL,   -- 'in'（入庫）| 'out'（出庫）| 'adjust'（棚卸調整）
-    quantity             NUMERIC(10,2) NOT NULL,    -- 正の数量（type で増減を解釈。adjust は差分）
+    quantity             NUMERIC(10,2) NOT NULL,    -- in/out=増減量、adjust=棚卸の実在庫数（絶対値）
     transaction_datetime TIMESTAMPTZ   NOT NULL DEFAULT now(),
     memo                 VARCHAR(100),
     delete_flg           BOOLEAN       NOT NULL DEFAULT false
@@ -443,5 +454,5 @@ CREATE INDEX idx_material_tx_material
 | `t_be_note` | `idx_be_note_parent` | `(p_note_id)` | 子ノード取得 |
 | `t_reservation` | `idx_reservation_staff_date` | `(staff_id, reservation_start)` | 予約管理画面・ダブルブッキングチェック |
 | `t_reservation` | `idx_reservation_status` | `(status, reservation_start)` | 予約受付画面・日報集計 |
-| `t_shift` | `idx_shift_staff_date` | `(staff_id, shift_date)` WHERE `delete_flg=false` | 空き時間算出 |
+| `t_shift` | `idx_shift_staff_date` | `(staff_id, shift_date)` WHERE `delete_flg=false` | 空き時間算出（非一意。分割シフト可） |
 | `t_material_transaction` | `idx_material_tx_material` | `(material_id, transaction_datetime)` | 入出庫履歴・在庫算出 |
