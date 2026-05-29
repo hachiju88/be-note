@@ -94,6 +94,9 @@ Authorization: Bearer <JWT>
 | GET | `/masters/tasks` | タスクマスタ一覧 | staff / admin |
 | GET | `/masters/staff` | スタッフ一覧 | staff / admin |
 | GET | `/masters/slots` | 予約枠一覧 | staff / admin |
+| POST | `/masters/{resource}` | マスタ登録 | admin |
+| PUT | `/masters/{resource}/{id}` | マスタ更新 | admin |
+| DELETE | `/masters/{resource}/{id}` | マスタ削除（論理） | admin |
 | GET | `/reports/daily` | 日報（期間集計） | admin |
 | GET | `/materials` | 材料一覧（在庫） | admin |
 | POST | `/materials` | 材料マスタ登録 | admin |
@@ -543,6 +546,60 @@ Response: 200
   { "slot_id": "0190a1b2-c3d4-7e80-e000-000000000001", "slot_name": "カットコース" }
 ]
 ```
+
+---
+
+### マスタ保守（CRUD）
+
+マスタメンテ画面（管理者）から各マスタを保守する。リソースごとに同一の CRUD パターンを適用する。
+
+```
+GET    /api/v1/masters/{resource}          一覧取得   Auth: staff / admin
+POST   /api/v1/masters/{resource}          登録       Auth: admin
+PUT    /api/v1/masters/{resource}/{id}     更新       Auth: admin
+DELETE /api/v1/masters/{resource}/{id}     論理削除    Auth: admin（delete_flg = true）
+```
+
+**`{resource}` 一覧**
+
+| resource | テーブル | 備考 |
+|---|---|---|
+| `menus` | `t_menu_master` | メニュー |
+| `tasks` | `t_task` | 工程（`task_order` で並び順） |
+| `staff` | `t_staff` | スタッフ |
+| `staff-skills` | `t_staff_skill` | スタッフ×可能タスク（複合キー） |
+| `business-hours` | `t_business_hour` | 営業時間（曜日別） |
+| `holidays` | `t_holiday` | 定休日・臨時休業 |
+| `shifts` | `t_shift` | スタッフシフト |
+| `slots` | `t_reservation_slot` | 予約枠 |
+| `materials` | `t_material` | 材料（材料管理画面でも保守） |
+
+**例：メニュー登録 / 更新 / 削除**
+
+```
+POST /api/v1/masters/menus
+Auth: admin
+Body:
+{
+  "menu_name"        : "cut",
+  "kinds"            : "",
+  "base_price"       : 4500,
+  "duration_minutes" : 30
+}
+Response: 201 { "menu_master_id": "..." }
+
+PUT /api/v1/masters/menus/{menu_master_id}
+Auth: admin
+Body: （登録と同形式。変更フィールドのみ可）
+Response: 200
+
+DELETE /api/v1/masters/menus/{menu_master_id}
+Auth: admin
+Response: 200   // delete_flg = true（論理削除）
+```
+
+> `staff-skills` は複合キー（`staff_id` + `task_id`）のため、`POST`（付与）／`DELETE`（剥奪）で表現し、`PUT` は使用しない。  
+> `t_task` の `task_order` を変更すると予約ボードの列順が変わる。
 
 ---
 
