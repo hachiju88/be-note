@@ -11,6 +11,9 @@
 - タイムゾーン：UTC で保存、表示時に JST 変換
 - 論理削除：`delete_flg BOOLEAN NOT NULL DEFAULT false` で統一
 - 日時型：`TIMESTAMPTZ`（タイムゾーン付き）
+- 主キー：全テーブル **UUID（v7 推奨）**。時系列ソート可・クライアント生成可で、スマホアプリのオフライン作成／同期に対応する。サーバ採番は `gen_random_uuid()`、クライアント採番は UUID v7 を用いる
+- 識別子の人間可読性は PK に持たせない。表示用は名称カラムや `creation_datetime` を用いる
+- 例外：`t_note_type` は固定語彙のため `SMALLINT`（コード値 `note_type_code` で受け渡し）
 
 ---
 
@@ -32,12 +35,12 @@ erDiagram
     t_staff ||--o{ t_staff_skill : "staff_id"
     t_task ||--o{ t_staff_skill : "task_id"
     t_staff ||--o{ t_shift : "staff_id"
-    t_be_note ||--o| t_reservation : "note_code"
-    t_be_note ||--o{ t_menu : "note_code"
-    t_be_note ||--o{ t_sold_item : "note_code"
-    t_be_note ||--o{ t_discount : "note_code"
-    t_be_note ||--o{ t_photo : "note_code"
-    t_be_note ||--o{ t_be_note : "p_note_code"
+    t_be_note ||--o| t_reservation : "note_id"
+    t_be_note ||--o{ t_menu : "note_id"
+    t_be_note ||--o{ t_sold_item : "note_id"
+    t_be_note ||--o{ t_discount : "note_id"
+    t_be_note ||--o{ t_photo : "note_id"
+    t_be_note ||--o{ t_be_note : "p_note_id"
     t_reservation ||--o| t_staff : "staff_id"
     t_reservation ||--o| t_reservation_slot : "slot_id"
 ```
@@ -52,7 +55,7 @@ erDiagram
 
 ```sql
 CREATE TABLE t_salon_group (
-    group_id    VARCHAR(10)  PRIMARY KEY,       -- 'GRP0000001'
+    group_id    UUID  PRIMARY KEY DEFAULT gen_random_uuid(),       -- UUID v7（例）
     group_name  VARCHAR(50)  NOT NULL,
     delete_flg  BOOLEAN      NOT NULL DEFAULT false
 );
@@ -62,8 +65,8 @@ CREATE TABLE t_salon_group (
 
 ```sql
 CREATE TABLE t_salon (
-    salon_id              VARCHAR(10)  PRIMARY KEY,    -- 'SAL0000001'
-    group_id              VARCHAR(10)  REFERENCES t_salon_group,
+    salon_id              UUID  PRIMARY KEY DEFAULT gen_random_uuid(),    -- UUID v7（例）
+    group_id              UUID  REFERENCES t_salon_group,
     salon_name            VARCHAR(50)  NOT NULL,
     salon_type            VARCHAR(20)  NOT NULL DEFAULT 'hair',
       -- 'hair' | 'nail' | 'esthe' | 'other'
@@ -79,8 +82,8 @@ CREATE TABLE t_salon (
 
 ```sql
 CREATE TABLE t_staff (
-    staff_id        VARCHAR(10)  PRIMARY KEY,    -- 'STF0000001'
-    salon_id        VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    staff_id        UUID  PRIMARY KEY DEFAULT gen_random_uuid(),    -- UUID v7（例）
+    salon_id        UUID  NOT NULL REFERENCES t_salon,
     staff_name      VARCHAR(20)  NOT NULL,
     staff_kana      VARCHAR(20),
     role            VARCHAR(10)  NOT NULL,
@@ -96,8 +99,8 @@ CREATE TABLE t_staff (
 
 ```sql
 CREATE TABLE t_staff_skill (
-    staff_id  VARCHAR(10)  NOT NULL REFERENCES t_staff,
-    task_id   INTEGER      NOT NULL REFERENCES t_task,
+    staff_id  UUID  NOT NULL REFERENCES t_staff,
+    task_id   UUID      NOT NULL REFERENCES t_task,
     PRIMARY KEY (staff_id, task_id)
 );
 ```
@@ -106,8 +109,8 @@ CREATE TABLE t_staff_skill (
 
 ```sql
 CREATE TABLE t_menu_master (
-    menu_master_id   SERIAL       PRIMARY KEY,
-    salon_id         VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    menu_master_id   UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    salon_id         UUID  NOT NULL REFERENCES t_salon,
     menu_name        VARCHAR(20)  NOT NULL,   -- 'cut' | 'color' | 'treatment' ...
     kinds            VARCHAR(20),             -- 種別（'short_color' など）
     base_price       INTEGER      NOT NULL,   -- 技術料（税込）
@@ -122,8 +125,8 @@ CREATE TABLE t_menu_master (
 
 ```sql
 CREATE TABLE t_task (
-    task_id     INTEGER      PRIMARY KEY,
-    salon_id    VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    task_id     UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    salon_id    UUID  NOT NULL REFERENCES t_salon,
     task_name   VARCHAR(20)  NOT NULL,    -- 'check_in' | 'wash' | 'cut' ...
     task_order  INTEGER      NOT NULL,    -- 列の表示順
     role_limit  VARCHAR(10)  DEFAULT NULL -- NULL=制限なし | 'stylist'=スタイリスト以上
@@ -152,7 +155,7 @@ INSERT INTO t_note_type VALUES
 
 ```sql
 CREATE TABLE t_business_hour (
-    salon_id    VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    salon_id    UUID  NOT NULL REFERENCES t_salon,
     day_of_week SMALLINT     NOT NULL,  -- 0=日 1=月 ... 6=土
     open_time   TIME         NOT NULL,
     close_time  TIME         NOT NULL,
@@ -164,7 +167,7 @@ CREATE TABLE t_business_hour (
 
 ```sql
 CREATE TABLE t_holiday (
-    salon_id      VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    salon_id      UUID  NOT NULL REFERENCES t_salon,
     holiday_date  DATE         NOT NULL,
     reason        VARCHAR(50),   -- '定休日' | '夏季休業' など
     PRIMARY KEY (salon_id, holiday_date)
@@ -175,8 +178,8 @@ CREATE TABLE t_holiday (
 
 ```sql
 CREATE TABLE t_shift (
-    shift_id    SERIAL       PRIMARY KEY,
-    staff_id    VARCHAR(10)  NOT NULL REFERENCES t_staff,
+    shift_id    UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    staff_id    UUID  NOT NULL REFERENCES t_staff,
     shift_date  DATE         NOT NULL,
     start_time  TIME         NOT NULL,
     end_time    TIME         NOT NULL,
@@ -192,8 +195,8 @@ CREATE UNIQUE INDEX idx_shift_staff_date
 
 ```sql
 CREATE TABLE t_reservation_slot (
-    slot_id     SERIAL       PRIMARY KEY,
-    salon_id    VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    slot_id     UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    salon_id    UUID  NOT NULL REFERENCES t_salon,
     slot_name   VARCHAR(30)  NOT NULL,
     delete_flg  BOOLEAN      NOT NULL DEFAULT false
 );
@@ -211,8 +214,8 @@ CREATE TABLE t_reservation_slot (
 
 ```sql
 CREATE TABLE t_client (
-    client_id    VARCHAR(10)  PRIMARY KEY,   -- 'CID0000001'
-    family_id    VARCHAR(10),                -- 家族グループID（同一IDで家族を紐付け）
+    client_id    UUID  PRIMARY KEY DEFAULT gen_random_uuid(),   -- UUID v7（例）
+    family_id    UUID       ,                -- 家族グループID（同一IDで家族を紐付け）
     client_name  VARCHAR(20)  NOT NULL,
     client_kana  VARCHAR(20)  NOT NULL,
     sex          SMALLINT     NOT NULL,      -- 1=男性 2=女性
@@ -233,8 +236,8 @@ CREATE TABLE t_client (
 
 ```sql
 CREATE TABLE t_client_salon (
-    client_id    VARCHAR(10)  NOT NULL REFERENCES t_client,
-    salon_id     VARCHAR(10)  NOT NULL REFERENCES t_salon,
+    client_id    UUID  NOT NULL REFERENCES t_client,
+    salon_id     UUID  NOT NULL REFERENCES t_salon,
     client_rank  VARCHAR(10),               -- 'Bronze' | 'Silver' | 'Gold' など
     total_visit  INTEGER      NOT NULL DEFAULT 0,
     first_visit  DATE,
@@ -251,18 +254,18 @@ CREATE TABLE t_client_salon (
 #### t_be_note（Be:note共通ヘッダ）
 
 1来店 = 1つの `head` ノードを親とする。  
-`p_note_code` が自分自身の場合は `head`（親ノード）。
+`p_note_id` が自分自身の場合は `head`（親ノード）。
 
 ```sql
 CREATE TABLE t_be_note (
-    note_code          VARCHAR(30)  PRIMARY KEY,
-      -- 'CID0000001_20221215_101000_000'（client_id_YYYYMMDD_HHMMSS_連番）
-    p_note_code        VARCHAR(30)  NOT NULL REFERENCES t_be_note(note_code),
+    note_id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+      -- UUID v7（クライアント生成可。来店親ノードは p_note_id = 自分自身）
+    p_note_id        UUID  NOT NULL REFERENCES t_be_note(note_id),
     version_number     INTEGER      NOT NULL DEFAULT 1,
     note_type          SMALLINT     NOT NULL REFERENCES t_note_type(note_type_id),
-    salon_id           VARCHAR(10)  NOT NULL REFERENCES t_salon,
-    client_id          VARCHAR(10)  NOT NULL REFERENCES t_client,
-    responsible        VARCHAR(10)  NOT NULL REFERENCES t_staff(staff_id),
+    salon_id           UUID  NOT NULL REFERENCES t_salon,
+    client_id          UUID  NOT NULL REFERENCES t_client,
+    responsible        UUID  NOT NULL REFERENCES t_staff(staff_id),
     creation_datetime  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     future_flg         BOOLEAN      NOT NULL DEFAULT false,  -- true=未来の予約
     is_client          BOOLEAN,     -- textノードのみ使用（true=顧客からのメッセージ）
@@ -272,7 +275,7 @@ CREATE TABLE t_be_note (
 );
 
 CREATE INDEX idx_be_note_client ON t_be_note (client_id, salon_id);
-CREATE INDEX idx_be_note_parent ON t_be_note (p_note_code);
+CREATE INDEX idx_be_note_parent ON t_be_note (p_note_id);
 ```
 
 #### t_reservation（予約明細）
@@ -281,10 +284,10 @@ CREATE INDEX idx_be_note_parent ON t_be_note (p_note_code);
 
 ```sql
 CREATE TABLE t_reservation (
-    note_code          VARCHAR(30)  PRIMARY KEY REFERENCES t_be_note,
-    salon_id           VARCHAR(10)  NOT NULL REFERENCES t_salon,
-    staff_id           VARCHAR(10)  NOT NULL REFERENCES t_staff,
-    slot_id            INTEGER      REFERENCES t_reservation_slot,
+    note_id          UUID  PRIMARY KEY REFERENCES t_be_note,
+    salon_id           UUID  NOT NULL REFERENCES t_salon,
+    staff_id           UUID  NOT NULL REFERENCES t_staff,
+    slot_id            UUID      REFERENCES t_reservation_slot,
     status             VARCHAR(20)  NOT NULL DEFAULT 'confirmed',
       -- 'draft'|'requested'|'pending'|'confirmed'|
       -- 'checked_in'|'in_progress'|'done'|'rejected'|'cancelled'
@@ -297,7 +300,7 @@ CREATE TABLE t_reservation (
     main_menu          VARCHAR(20)  NOT NULL,
     total              INTEGER,               -- 会計合計（税込）NULL=未会計
     payment_method     VARCHAR(10),           -- NULL|'cash'|'card'|'qr'
-    current_task_id    INTEGER      REFERENCES t_task,
+    current_task_id    UUID      REFERENCES t_task,
     cancel_reason      VARCHAR(100),
     no_show_flg        BOOLEAN      NOT NULL DEFAULT false,
     idempotency_key    UUID         UNIQUE,
@@ -326,9 +329,9 @@ CREATE INDEX idx_reservation_status
 
 ```sql
 CREATE TABLE t_menu (
-    menu_id    SERIAL       PRIMARY KEY,
-    note_code  VARCHAR(30)  NOT NULL REFERENCES t_be_note,
-    staff_id   VARCHAR(10)  NOT NULL REFERENCES t_staff,
+    menu_id    UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id  UUID  NOT NULL REFERENCES t_be_note,
+    staff_id   UUID  NOT NULL REFERENCES t_staff,
     menu_name  VARCHAR(20)  NOT NULL,
     kinds      VARCHAR(20),
     memo       VARCHAR(100),
@@ -344,9 +347,9 @@ CREATE TABLE t_menu (
 
 ```sql
 CREATE TABLE t_sold_item (
-    item_id    SERIAL       PRIMARY KEY,
-    note_code  VARCHAR(30)  NOT NULL REFERENCES t_be_note,
-    staff_id   VARCHAR(10)  NOT NULL REFERENCES t_staff,
+    item_id    UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id  UUID  NOT NULL REFERENCES t_be_note,
+    staff_id   UUID  NOT NULL REFERENCES t_staff,
     item_name  VARCHAR(20)  NOT NULL,
     kinds      VARCHAR(20),
     memo       VARCHAR(100),
@@ -360,9 +363,9 @@ CREATE TABLE t_sold_item (
 
 ```sql
 CREATE TABLE t_discount (
-    discount_id    SERIAL       PRIMARY KEY,
-    note_code      VARCHAR(30)  NOT NULL REFERENCES t_be_note,
-    staff_id       VARCHAR(10)  NOT NULL REFERENCES t_staff,
+    discount_id    UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id      UUID  NOT NULL REFERENCES t_be_note,
+    staff_id       UUID  NOT NULL REFERENCES t_staff,
     discount_name  VARCHAR(20)  NOT NULL,
     kinds          VARCHAR(20),           -- 'first' | 'campaign' など
     memo           VARCHAR(100),
@@ -377,9 +380,9 @@ CREATE TABLE t_discount (
 
 ```sql
 CREATE TABLE t_photo (
-    photo_id   SERIAL       PRIMARY KEY,
-    note_code  VARCHAR(30)  NOT NULL REFERENCES t_be_note,
-    staff_id   VARCHAR(10)  NOT NULL REFERENCES t_staff,
+    photo_id   UUID       PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id  UUID  NOT NULL REFERENCES t_be_note,
+    staff_id   UUID  NOT NULL REFERENCES t_staff,
     storage_path VARCHAR(200) NOT NULL,   -- Supabase Storage のパス
     memo       VARCHAR(100)
 );
@@ -392,7 +395,7 @@ CREATE TABLE t_photo (
 | テーブル | インデックス | カラム | 用途 |
 |---|---|---|---|
 | `t_be_note` | `idx_be_note_client` | `(client_id, salon_id)` | Be:note一覧取得 |
-| `t_be_note` | `idx_be_note_parent` | `(p_note_code)` | 子ノード取得 |
+| `t_be_note` | `idx_be_note_parent` | `(p_note_id)` | 子ノード取得 |
 | `t_reservation` | `idx_reservation_staff_date` | `(staff_id, reservation_start)` | 予約管理画面・ダブルブッキングチェック |
 | `t_reservation` | `idx_reservation_status` | `(status, reservation_start)` | 予約受付画面 |
 | `t_shift` | `idx_shift_staff_date` | `(staff_id, shift_date)` WHERE `delete_flg=false` | 空き時間算出 |
