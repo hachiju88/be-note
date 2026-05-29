@@ -605,6 +605,7 @@ Auth: admin
 Response: 200   // delete_flg = true（論理削除）
 ```
 
+> **削除の種別**：`DELETE` は `delete_flg` を持つマスタ（menus / tasks / staff / shifts / slots / materials）では**論理削除**（`delete_flg=true`）、`delete_flg` を持たない設定・連関テーブル（**staff-skills / business-hours / holidays**）では**物理削除**となる。  
 > `staff-skills` は複合キー（`staff_id` + `task_id`）のため、`PUT` は使用せず、付与＝`POST`／剥奪＝クエリ指定の `DELETE` で表現する：  
 > `DELETE /api/v1/masters/staff-skills?staff_id={staff_id}&task_id={task_id}`  
 > `t_task` の `task_order` を変更すると予約ボードの列順が変わる。
