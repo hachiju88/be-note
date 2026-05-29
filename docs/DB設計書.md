@@ -1,11 +1,10 @@
 # DB設計書
 
-> Be:note サロン予約管理システム  
-> 版数：00.01 / 2026-05-29
+> Be:note サロン予約管理システム
 
 ---
 
-## 1. 概要
+## 概要
 
 - DB：PostgreSQL（Supabase）
 - 文字コード：UTF-8
@@ -15,7 +14,7 @@
 
 ---
 
-## 2. ER図
+## ER図
 
 ```mermaid
 erDiagram
@@ -45,9 +44,9 @@ erDiagram
 
 ---
 
-## 3. テーブル定義
+## テーブル定義
 
-### 3-1. マスタ系
+### マスタ系
 
 #### t_salon_group（サロングループ）
 
@@ -202,7 +201,7 @@ CREATE TABLE t_reservation_slot (
 
 ---
 
-### 3-2. 顧客系
+### 顧客系
 
 #### t_client（顧客）
 
@@ -247,7 +246,7 @@ CREATE TABLE t_client_salon (
 
 ---
 
-### 3-3. Be:note系
+### Be:note系
 
 #### t_be_note（Be:note共通ヘッダ）
 
@@ -388,7 +387,7 @@ CREATE TABLE t_photo (
 
 ---
 
-## 4. インデックス一覧
+## インデックス一覧
 
 | テーブル | インデックス | カラム | 用途 |
 |---|---|---|---|

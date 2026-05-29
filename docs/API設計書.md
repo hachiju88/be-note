@@ -1,11 +1,10 @@
 # API設計書
 
-> Be:note サロン予約管理システム  
-> 版数：00.01 / 2026-05-29
+> Be:note サロン予約管理システム
 
 ---
 
-## 1. 共通仕様
+## 共通仕様
 
 ### Base URL
 
@@ -73,34 +72,34 @@ Authorization: Bearer <JWT>
 
 ---
 
-## 2. エンドポイント一覧
+## エンドポイント一覧
 
-| # | メソッド | パス | 概要 | 権限 |
-|---|---|---|---|---|
-| 1 | GET | `/clients/{client_id}` | 顧客情報取得 | staff / admin |
-| 2 | POST | `/clients` | 顧客新規登録 | staff / admin |
-| 3 | PUT | `/clients/{client_id}` | 顧客情報更新 | staff / admin |
-| 4 | GET | `/clients/{client_id}/notes` | Be:note一覧取得 | staff / admin / customer（自分のみ） |
-| 5 | GET | `/clients/{client_id}/notes/{note_code}` | Be:note詳細取得 | staff / admin / customer（自分のみ） |
-| 6 | POST | `/clients/{client_id}/notes` | Be:note作成 | staff / admin |
-| 7 | GET | `/availability` | 空き時間取得 | all |
-| 8 | GET | `/reservations` | 予約一覧取得 | staff / admin |
-| 9 | POST | `/reservations` | 即時予約作成 | staff / admin |
-| 10 | POST | `/reservation-requests` | リクエスト予約申込 | customer |
-| 11 | GET | `/reservations/{reservation_id}` | 予約詳細取得 | staff / admin / customer（自分のみ） |
-| 12 | PUT | `/reservations/{reservation_id}` | 予約内容編集 | staff / admin |
-| 13 | PATCH | `/reservations/{reservation_id}/status` | ステータス更新 | 権限別に制限 |
-| 14 | PATCH | `/reservations/{reservation_id}/task` | タスク進行（ボードD&D） | staff / admin |
-| 15 | GET | `/masters/menus` | メニューマスタ一覧 | staff / admin |
-| 16 | GET | `/masters/tasks` | タスクマスタ一覧 | staff / admin |
-| 17 | GET | `/masters/staff` | スタッフ一覧 | staff / admin |
-| 18 | GET | `/masters/slots` | 予約枠一覧 | staff / admin |
+| メソッド | パス | 概要 | 権限 |
+|---|---|---|---|
+| GET | `/clients/{client_id}` | 顧客情報取得 | staff / admin |
+| POST | `/clients` | 顧客新規登録 | staff / admin |
+| PUT | `/clients/{client_id}` | 顧客情報更新 | staff / admin |
+| GET | `/clients/{client_id}/notes` | Be:note一覧取得 | staff / admin / customer（自分のみ） |
+| GET | `/clients/{client_id}/notes/{note_code}` | Be:note詳細取得 | staff / admin / customer（自分のみ） |
+| POST | `/clients/{client_id}/notes` | Be:note作成 | staff / admin |
+| GET | `/availability` | 空き時間取得 | all |
+| GET | `/reservations` | 予約一覧取得 | staff / admin |
+| POST | `/reservations` | 即時予約作成 | staff / admin |
+| POST | `/reservation-requests` | リクエスト予約申込 | customer |
+| GET | `/reservations/{reservation_id}` | 予約詳細取得 | staff / admin / customer（自分のみ） |
+| PUT | `/reservations/{reservation_id}` | 予約内容編集 | staff / admin |
+| PATCH | `/reservations/{reservation_id}/status` | ステータス更新 | 権限別に制限 |
+| PATCH | `/reservations/{reservation_id}/task` | タスク進行（ボードD&D） | staff / admin |
+| GET | `/masters/menus` | メニューマスタ一覧 | staff / admin |
+| GET | `/masters/tasks` | タスクマスタ一覧 | staff / admin |
+| GET | `/masters/staff` | スタッフ一覧 | staff / admin |
+| GET | `/masters/slots` | 予約枠一覧 | staff / admin |
 
 ---
 
-## 3. 顧客（Clients）
+## 顧客（Clients）
 
-### 3-1. 顧客情報取得
+### 顧客情報取得
 
 ```
 GET /api/v1/clients/{client_id}
@@ -147,7 +146,7 @@ Auth: staff / admin
 
 ---
 
-### 3-2. 顧客新規登録
+### 顧客新規登録
 
 ```
 POST /api/v1/clients
@@ -171,7 +170,7 @@ Response: 201 { "client_id": "CID0000002" }
 
 ---
 
-### 3-3. 顧客情報更新
+### 顧客情報更新
 
 ```
 PUT /api/v1/clients/{client_id}
@@ -182,9 +181,9 @@ Response: 200
 
 ---
 
-## 4. Be:note
+## Be:note
 
-### 4-1. Be:note一覧取得
+### Be:note一覧取得
 
 ```
 GET /api/v1/clients/{client_id}/notes
@@ -229,7 +228,7 @@ Query:
 
 ---
 
-### 4-2. Be:note詳細取得
+### Be:note詳細取得
 
 ```
 GET /api/v1/clients/{client_id}/notes/{note_code}
@@ -281,7 +280,7 @@ Auth: staff / admin / customer（自分のみ）
 
 ---
 
-### 4-3. Be:note作成
+### Be:note作成
 
 ```
 POST /api/v1/clients/{client_id}/notes
@@ -298,9 +297,9 @@ Response: 201 { "note_code": "CID0000001_20221215_101000_001" }
 
 ---
 
-## 5. 予約（Reservations）
+## 予約（Reservations）
 
-### 5-1. 空き時間取得
+### 空き時間取得
 
 ```
 GET /api/v1/availability
@@ -340,7 +339,7 @@ Query:
 
 ---
 
-### 5-2. 予約一覧取得
+### 予約一覧取得
 
 ```
 GET /api/v1/reservations
@@ -376,7 +375,7 @@ Query:
 
 ---
 
-### 5-3. 即時予約作成
+### 即時予約作成
 
 ```
 POST /api/v1/reservations
@@ -406,7 +405,7 @@ Error   : 409 DOUBLE_BOOKING
 
 ---
 
-### 5-4. リクエスト予約申込（顧客操作）
+### リクエスト予約申込（顧客操作）
 
 ```
 POST /api/v1/reservation-requests
@@ -423,7 +422,7 @@ Response: 201 { "note_code": "...", "status": "requested" }
 
 ---
 
-### 5-5. 予約内容編集
+### 予約内容編集
 
 ```
 PUT /api/v1/reservations/{note_code}
@@ -443,7 +442,7 @@ Error   : 409 DOUBLE_BOOKING / 409 VERSION_CONFLICT
 
 ---
 
-### 5-6. ステータス更新
+### ステータス更新
 
 ```
 PATCH /api/v1/reservations/{note_code}/status
@@ -464,7 +463,7 @@ Error   : 409 DOUBLE_BOOKING（confirmed への遷移時）
 
 ---
 
-### 5-7. タスク進行（予約ボード D&D）
+### タスク進行（予約ボード D&D）
 
 ```
 PATCH /api/v1/reservations/{note_code}/task
@@ -475,9 +474,9 @@ Response: 200
 
 ---
 
-## 6. マスタ（Masters）
+## マスタ（Masters）
 
-### 6-1. メニューマスタ一覧
+### メニューマスタ一覧
 
 ```
 GET /api/v1/masters/menus
@@ -496,7 +495,7 @@ Response: 200
 
 ---
 
-### 6-2. タスクマスタ一覧
+### タスクマスタ一覧
 
 ```
 GET /api/v1/masters/tasks
@@ -510,7 +509,7 @@ Response: 200
 
 ---
 
-### 6-3. スタッフ一覧
+### スタッフ一覧
 
 ```
 GET /api/v1/masters/staff
@@ -529,7 +528,7 @@ Response: 200
 
 ---
 
-### 6-4. 予約枠一覧
+### 予約枠一覧
 
 ```
 GET /api/v1/masters/slots
