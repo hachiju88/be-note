@@ -1,0 +1,23 @@
+# Gemini Code Assist for GitHub 設定
+# 参考: https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
+have_fun: false
+
+code_review:
+  disable: false
+  # コメントの最小重大度（LOW / MEDIUM / HIGH / CRITICAL）。ノイズを抑えるなら上げる
+  comment_severity_threshold: MEDIUM
+  # レビューコメント数の上限（-1 = 無制限）
+  max_review_comments: -1
+  pull_request_opened:
+    help: false
+    summary: true        # PR 作成時に概要を自動生成
+    code_review: true     # PR 作成時に自動レビュー
+    include_drafts: true
+
+# レビュー対象外（バイナリ・生成物）
+ignore_patterns:
+  - "**/*.pptx"
+  - "**/*.xlsx"
+  - "**/*.xmind"
+  - "**/*.zip"
+  - "**/*.png"
