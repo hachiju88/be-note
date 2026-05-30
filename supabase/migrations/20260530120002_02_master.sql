@@ -24,7 +24,8 @@ create table t_salon (
     phone                 varchar(20),
     cancel_deadline_days  integer      not null default 1,
       -- キャンセル可能期限（日数）。1=当日キャンセル不可
-    delete_flg            boolean      not null default false
+    delete_flg            boolean      not null default false,
+    constraint check_salon_type check (salon_type in ('hair', 'nail', 'esthe', 'other'))
 );
 
 -- スタッフ ------------------------------------------------------
@@ -37,7 +38,8 @@ create table t_staff (
     position        varchar(10)  not null,            -- 職位: 'stylist' | 'assistant'
     is_admin        boolean      not null default false,  -- 管理者権限（true で JWT ロール=admin を付与）
     nomination_fee  integer      not null default 0,  -- 指名料（税込）
-    delete_flg      boolean      not null default false
+    delete_flg      boolean      not null default false,
+    constraint check_staff_position check (position in ('stylist', 'assistant'))
 );
 
 -- note種別マスタ（固定語彙のため SMALLINT）----------------------
@@ -63,7 +65,9 @@ create table t_menu_master (
     kinds             varchar(20),             -- 種別（'short_color' など）
     base_price        integer      not null,   -- 技術料（税込）
     duration_minutes  integer      not null,   -- 標準所要時間（分）
-    delete_flg        boolean      not null default false
+    delete_flg        boolean      not null default false,
+    constraint check_base_price check (base_price >= 0),
+    constraint check_duration check (duration_minutes > 0)
 );
 
 -- 工程マスタ（予約ボードの列）----------------------------------
@@ -88,7 +92,9 @@ create table t_business_hour (
     day_of_week  smallint  not null,  -- 0=日 1=月 ... 6=土
     open_time    time      not null,
     close_time   time      not null,
-    primary key (salon_id, day_of_week)
+    primary key (salon_id, day_of_week),
+    constraint check_day_of_week check (day_of_week between 0 and 6),
+    constraint check_business_time check (open_time < close_time)
 );
 
 -- 定休日・臨時休業（設定テーブル・物理削除）--------------------
@@ -106,7 +112,8 @@ create table t_shift (
     shift_date  date     not null,
     start_time  time     not null,
     end_time    time     not null,
-    delete_flg  boolean  not null default false
+    delete_flg  boolean  not null default false,
+    constraint check_shift_time check (start_time < end_time)
 );
 
 -- 1日に複数シフト（中抜け・分割シフト）を許容するため一意制約は設けない。

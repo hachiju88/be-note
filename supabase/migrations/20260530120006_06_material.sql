@@ -12,7 +12,9 @@ create table t_material (
     unit           varchar(10)   not null,            -- '本' | 'g' | 'ml' | '個' など
     current_stock  numeric(10,2) not null default 0,  -- 現在庫（台帳から更新するキャッシュ）
     reorder_point  numeric(10,2) not null default 0,  -- 発注点。current_stock <= で低在庫アラート
-    delete_flg     boolean       not null default false
+    delete_flg     boolean       not null default false,
+    constraint check_current_stock check (current_stock >= 0),
+    constraint check_reorder_point check (reorder_point >= 0)
 );
 
 -- 入出庫台帳 ----------------------------------------------------
@@ -25,7 +27,9 @@ create table t_material_transaction (
     quantity              numeric(10,2) not null,    -- in/out=増減量、adjust=棚卸の実在庫数（絶対値）
     transaction_datetime  timestamptz   not null default now(),
     memo                  varchar(100),
-    delete_flg            boolean       not null default false
+    delete_flg            boolean       not null default false,
+    constraint check_transaction_type check (transaction_type in ('in', 'out', 'adjust')),
+    constraint check_quantity_non_negative check (quantity >= 0)
 );
 
 create index idx_material_tx_material

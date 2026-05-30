@@ -77,7 +77,8 @@ CREATE TABLE t_salon (
     phone                 VARCHAR(20),
     cancel_deadline_days  INTEGER      NOT NULL DEFAULT 1,
       -- キャンセル可能期限（日数）。1=当日キャンセル不可
-    delete_flg            BOOLEAN      NOT NULL DEFAULT false
+    delete_flg            BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_salon_type CHECK (salon_type IN ('hair', 'nail', 'esthe', 'other'))
 );
 ```
 
@@ -93,7 +94,8 @@ CREATE TABLE t_staff (
     position        VARCHAR(10)  NOT NULL,            -- 職位: 'stylist' | 'assistant'
     is_admin        BOOLEAN      NOT NULL DEFAULT false,  -- 管理者権限（true で JWT ロール=admin を付与）
     nomination_fee  INTEGER      NOT NULL DEFAULT 0,  -- 指名料（税込）
-    delete_flg      BOOLEAN      NOT NULL DEFAULT false
+    delete_flg      BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_staff_position CHECK (position IN ('stylist', 'assistant'))
 );
 ```
 
@@ -119,7 +121,9 @@ CREATE TABLE t_menu_master (
     kinds            VARCHAR(20),             -- 種別（'short_color' など）
     base_price       INTEGER      NOT NULL,   -- 技術料（税込）
     duration_minutes INTEGER      NOT NULL,   -- 標準所要時間（分）
-    delete_flg       BOOLEAN      NOT NULL DEFAULT false
+    delete_flg       BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_base_price CHECK (base_price >= 0),
+    CONSTRAINT check_duration CHECK (duration_minutes > 0)
 );
 ```
 
@@ -163,7 +167,9 @@ CREATE TABLE t_business_hour (
     day_of_week SMALLINT     NOT NULL,  -- 0=日 1=月 ... 6=土
     open_time   TIME         NOT NULL,
     close_time  TIME         NOT NULL,
-    PRIMARY KEY (salon_id, day_of_week)
+    PRIMARY KEY (salon_id, day_of_week),
+    CONSTRAINT check_day_of_week CHECK (day_of_week BETWEEN 0 AND 6),
+    CONSTRAINT check_business_time CHECK (open_time < close_time)
 );
 ```
 
@@ -187,7 +193,8 @@ CREATE TABLE t_shift (
     shift_date  DATE         NOT NULL,
     start_time  TIME         NOT NULL,
     end_time    TIME         NOT NULL,
-    delete_flg  BOOLEAN      NOT NULL DEFAULT false
+    delete_flg  BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_shift_time CHECK (start_time < end_time)
 );
 
 -- 1日に複数シフト（中抜け・分割シフト）を許容するため一意制約は設けない。
@@ -242,7 +249,8 @@ CREATE TABLE t_client (
     hair_type    VARCHAR(30),
     allergy      VARCHAR(30),
     occupation   VARCHAR(20),
-    delete_flg   BOOLEAN      NOT NULL DEFAULT false
+    delete_flg   BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_client_sex CHECK (sex IN (1, 2))
 );
 ```
 
@@ -287,7 +295,9 @@ CREATE TABLE t_be_note (
     is_client          BOOLEAN,     -- textノードのみ使用（true=顧客からのメッセージ）
     text               VARCHAR(300),  -- textノードのみ使用
     read_flg           BOOLEAN,     -- textノードのみ使用
-    delete_flg         BOOLEAN      NOT NULL DEFAULT false
+    delete_flg         BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_head_has_no_parent CHECK (NOT (note_type = 1 AND p_note_id IS NOT NULL)),  -- head はルート
+    CONSTRAINT check_text_node_has_text CHECK (NOT (note_type = 6 AND text IS NULL))            -- text は本文必須
 );
 
 CREATE INDEX idx_be_note_client ON t_be_note (client_id, salon_id);
@@ -320,7 +330,13 @@ CREATE TABLE t_reservation (
     cancel_reason      VARCHAR(100),
     no_show_flg        BOOLEAN      NOT NULL DEFAULT false,
     idempotency_key    UUID         UNIQUE,
-    version_no         INTEGER      NOT NULL DEFAULT 1   -- 楽観ロック（編集競合検出。note_version とは別）
+    version_no         INTEGER      NOT NULL DEFAULT 1,  -- 楽観ロック（編集競合検出。note_version とは別）
+    CONSTRAINT check_reservation_status CHECK (status IN ('draft', 'requested', 'pending', 'confirmed', 'checked_in', 'in_progress', 'done', 'rejected', 'cancelled')),
+    CONSTRAINT check_reserve_type CHECK (reserve_type IN ('immediate', 'request')),
+    CONSTRAINT check_reservation_time CHECK (reservation_start < reservation_end),
+    CONSTRAINT check_actual_time CHECK (actual_start IS NULL OR actual_end IS NULL OR actual_start < actual_end),
+    CONSTRAINT check_total_non_negative CHECK (total IS NULL OR total >= 0),
+    CONSTRAINT check_payment_method CHECK (payment_method IS NULL OR payment_method IN ('cash', 'card', 'qr'))
 );
 
 -- ダブルブッキング防止（DB層）
@@ -386,7 +402,8 @@ CREATE TABLE t_discount (
     discount_name  VARCHAR(20)  NOT NULL,
     kinds          VARCHAR(20),           -- 'first' | 'campaign' など
     memo           VARCHAR(100),
-    price          INTEGER      NOT NULL  -- 負の値（例：-2000）
+    price          INTEGER      NOT NULL,  -- 負の値（例：-2000）
+    CONSTRAINT check_discount_price CHECK (price <= 0)
 );
 ```
 
@@ -421,7 +438,9 @@ CREATE TABLE t_material (
     unit           VARCHAR(10)  NOT NULL,            -- '本' | 'g' | 'ml' | '個' など
     current_stock  NUMERIC(10,2) NOT NULL DEFAULT 0, -- 現在庫（台帳から更新するキャッシュ）
     reorder_point  NUMERIC(10,2) NOT NULL DEFAULT 0, -- 発注点。current_stock <= で低在庫アラート
-    delete_flg     BOOLEAN      NOT NULL DEFAULT false
+    delete_flg     BOOLEAN      NOT NULL DEFAULT false,
+    CONSTRAINT check_current_stock CHECK (current_stock >= 0),
+    CONSTRAINT check_reorder_point CHECK (reorder_point >= 0)
 );
 ```
 
@@ -437,7 +456,9 @@ CREATE TABLE t_material_transaction (
     quantity             NUMERIC(10,2) NOT NULL,    -- in/out=増減量、adjust=棚卸の実在庫数（絶対値）
     transaction_datetime TIMESTAMPTZ   NOT NULL DEFAULT now(),
     memo                 VARCHAR(100),
-    delete_flg           BOOLEAN       NOT NULL DEFAULT false
+    delete_flg           BOOLEAN       NOT NULL DEFAULT false,
+    CONSTRAINT check_transaction_type CHECK (transaction_type IN ('in', 'out', 'adjust')),
+    CONSTRAINT check_quantity_non_negative CHECK (quantity >= 0)
 );
 
 CREATE INDEX idx_material_tx_material

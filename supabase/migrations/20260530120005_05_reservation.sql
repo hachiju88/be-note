@@ -24,7 +24,13 @@ create table t_reservation (
     cancel_reason      varchar(100),
     no_show_flg        boolean      not null default false,
     idempotency_key    uuid         unique,
-    version_no         integer      not null default 1   -- 楽観ロック（編集競合検出。note_version とは別）
+    version_no         integer      not null default 1,  -- 楽観ロック（編集競合検出。note_version とは別）
+    constraint check_reservation_status check (status in ('draft', 'requested', 'pending', 'confirmed', 'checked_in', 'in_progress', 'done', 'rejected', 'cancelled')),
+    constraint check_reserve_type check (reserve_type in ('immediate', 'request')),
+    constraint check_reservation_time check (reservation_start < reservation_end),
+    constraint check_actual_time check (actual_start is null or actual_end is null or actual_start < actual_end),
+    constraint check_total_non_negative check (total is null or total >= 0),
+    constraint check_payment_method check (payment_method is null or payment_method in ('cash', 'card', 'qr'))
 );
 
 -- ダブルブッキング防止（DB層）。draft/cancelled/rejected は対象外＝再予約可。
@@ -75,7 +81,8 @@ create table t_discount (
     discount_name  varchar(20)  not null,
     kinds          varchar(20),           -- 'first' | 'campaign' など
     memo           varchar(100),
-    price          integer      not null  -- 負の値（例：-2000）
+    price          integer      not null,  -- 負の値（例：-2000）
+    constraint check_discount_price check (price <= 0)
 );
 
 -- 写真明細（note_type = 5 のノードに紐づく）--------------------

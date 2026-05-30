@@ -17,7 +17,11 @@ create table t_be_note (
     is_client          boolean,     -- textノードのみ使用（true=顧客からのメッセージ）
     text               varchar(300),  -- textノードのみ使用
     read_flg           boolean,     -- textノードのみ使用
-    delete_flg         boolean      not null default false
+    delete_flg         boolean      not null default false,
+    -- head(note_type=1)はルートのため親を持たない
+    constraint check_head_has_no_parent check (not (note_type = 1 and p_note_id is not null)),
+    -- text(note_type=6)は本文必須
+    constraint check_text_node_has_text check (not (note_type = 6 and text is null))
 );
 
 create index idx_be_note_client on t_be_note (client_id, salon_id);

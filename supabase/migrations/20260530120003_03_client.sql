@@ -20,7 +20,8 @@ create table t_client (
     hair_type     varchar(30),
     allergy       varchar(30),
     occupation    varchar(20),
-    delete_flg    boolean      not null default false
+    delete_flg    boolean      not null default false,
+    constraint check_client_sex check (sex in (1, 2))
 );
 
 -- 顧客×サロン（ランク・来店回数・メモをサロンごとに管理）-------
