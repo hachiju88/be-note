@@ -128,7 +128,7 @@ Claude Code がこのリポジトリで作業するときの前提。**現在は
 | 予約受付 | `/clerk` | staff/admin | `GET /reservations`（当日） |
 | 予約ボード | `/board` | staff/admin | `GET /reservations`（来店中）, `PATCH …/task` |
 | 予約管理 | `/reserve` | staff/admin | `GET /reservations`, `GET /availability`, `PUT …` |
-| Be:note | `/be_note/{client_id}` | staff/admin/customer(自分) | `GET/POST /clients/{id}/notes` |
+| Be:note | `/be_note/{client_id}` | staff/admin/customer(自分) | `GET/POST /clients/{client_id}/notes` |
 | 日報管理 | `/report` | admin | `GET /reports/daily` |
 | 材料管理 | `/material` | admin | `GET/POST /materials…` |
 | マスタメンテ | `/master` | admin | `GET/POST/PUT/DELETE /masters/{resource}` |
