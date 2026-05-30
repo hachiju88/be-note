@@ -1,0 +1,52 @@
+# Supabase ローカル開発設定
+# 詳細: https://supabase.com/docs/guides/local-development
+
+project_id = "be-note"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# ビフォー/アフター写真などを格納（署名付きURL配信）
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# サインイン後のリダイレクト先などはフロント実装時に調整
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# フェーズ1のソーシャルログイン（Google / Instagram）は
+# 各プロバイダのクレデンシャル設定後に有効化する。
+# [auth.external.google]
+# enabled = true
+
+[analytics]
+enabled = false

@@ -22,9 +22,9 @@ Claude Code がこのリポジトリで作業するときの前提。**現在は
 | ディレクトリ | 用途 | 状態 |
 |---|---|---|
 | `docs/` | 設計書一式（Markdown）= **仕様の正典** | ✅ あり |
-| `web/` | Next.js + TypeScript（サロン用 Web 管理ツール・顧客向け Web） | 未作成 |
+| `web/` | Next.js + TypeScript（サロン用 Web 管理ツール・顧客向け Web） | ✅ 雛形あり |
 | `mobile/` | React Native（Expo）顧客向けアプリ | 未作成 |
-| `supabase/migrations/` | DB マイグレーション（DDL） | 未作成 |
+| `supabase/migrations/` | DB マイグレーション（DDL） | ✅ あり |
 | `.claude/` | Claude Code 設定・プロジェクトスキル | ✅ あり |
 | `.gemini/` | Gemini Code Assist（PR 自動レビュー）設定 | ✅ あり |
 
@@ -114,8 +114,34 @@ Claude Code がこのリポジトリで作業するときの前提。**現在は
 - 設計を変更するときは**関連する全文書を同時に更新**して整合を保つ。
 - ドキュメント・コードコメント・PR は**日本語**で書く（チーム規約／`.gemini/styleguide.md`）。
 - PR は Gemini Code Assist が自動レビューする（`.gemini/config.yaml`）。
-- `web/` / `mobile/` の実装が入ったら、ビルド/テスト/lint コマンドを本節に追記し、
-  Web セッション用の SessionStart フック（`session-start-hook` スキル）を整備すること。
+- `mobile/` の実装が入ったら、ビルド/テスト/lint コマンドを本節に追記すること。
+  Web セッション用の SessionStart フック（`session-start-hook` スキル）整備も今後の課題。
+
+### コマンド早見表
+
+**web/（Next.js 16・App Router・TypeScript・Tailwind・ESLint）**
+```
+cd web
+npm install        # 依存インストール
+npm run dev        # 開発サーバ（http://localhost:3000）
+npm run build      # 本番ビルド（型チェック込み）
+npm run lint       # ESLint
+```
+- ルーティングは Route Groups：`(auth)`（未認証）/ `(app)`（staff・admin）/ `(admin)`（admin）。
+- Supabase クライアントは `src/lib/supabase/{client,server}.ts`（`@supabase/ssr`）。Next.js 16 では `cookies()` は async。
+- 環境変数は `web/.env.local`（雛形は `web/.env.example`）。`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`。
+- 認証/ロールガード・各画面ロジックは未実装（雛形のみ）。各画面は `ScreenPlaceholder` を表示。
+- `web/AGENTS.md`：この Next.js はブレイキングチェンジあり。コード前に `node_modules/next/dist/docs/` を参照。
+
+**supabase/（PostgreSQL・DDL）**
+```
+supabase start            # ローカルスタック起動（要 Docker）
+supabase db reset         # migrations を初期適用（検証）
+supabase migration new <name>   # 新規マイグレーション作成
+```
+- マイグレーションは `supabase/migrations/` にドメイン別6本（拡張→マスタ→顧客→Be:note→予約→材料）。FK 依存順に適用される。
+- 全 DDL は `docs/DB設計書.md` を正典に作成。ダブルブッキングは `t_reservation.no_double_booking`（EXCLUDE）、シフト重複は `t_shift.no_shift_overlap`。
+- RLS（行レベルセキュリティ）は未導入。方針確定後に別マイグレーションで追加予定。
 
 ---
 
