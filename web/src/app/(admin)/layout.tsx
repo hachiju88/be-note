@@ -1,17 +1,21 @@
+import { requireAdmin } from "@/lib/auth";
+import AppHeader from "@/components/AppHeader";
+
 /**
  * (admin) グループ: admin 専用レイアウト。
- * admin ロールガード（t_staff.is_admin から導出）は実装フェーズで追加する。
+ * requireAdmin() で admin（t_staff.is_admin = true）を強制する。
+ * admin 以外は /menu へ退避する。
  */
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { email, role } = await requireAdmin();
+
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b px-6 py-3 text-sm font-semibold">
-        Be:note 管理者メニュー（admin）
-      </header>
+      <AppHeader title="Be:note 管理者メニュー" email={email} role={role} />
       <div className="flex-1">{children}</div>
     </div>
   );
