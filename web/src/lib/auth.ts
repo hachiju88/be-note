@@ -36,12 +36,19 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   if (!user) return null;
 
   // staff レコードを引き、権限（is_admin）を導出する。
-  const { data: staff } = await supabase
+  const { data: staff, error: staffError } = await supabase
     .from("t_staff")
     .select("staff_id, salon_id, is_admin")
     .eq("user_id", user.id)
     .eq("delete_flg", false)
     .maybeSingle();
+
+  if (staffError) {
+    // DB エラーをサイレントに無視すると、スタッフが誤って customer 扱いされる。
+    // エラーをログし、呼び出し元がハンドリングできるよう例外を投げる。
+    console.error("[auth] t_staff 取得失敗:", staffError);
+    throw new Error("認証情報の取得に失敗しました。");
+  }
 
   if (staff) {
     return {

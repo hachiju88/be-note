@@ -27,21 +27,39 @@ export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
+  // セッション更新で書き換わった Cookie をリダイレクトレスポンスへ引き継ぐ
+  // ヘルパー。新規 NextResponse.redirect() は response の Cookie を引き継がない
+  // ため、手動でコピーする必要がある。
+  function redirectWithCookies(url: URL): NextResponse {
+    const res = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => {
+      res.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return res;
+  }
+
   // 未認証で保護ルートにアクセス → /login へ。
   if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // ログイン後に元のページへ戻すための next パラメータ。
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
 
   // 認証済みで /login にアクセス → メニューへ。
-  if (user && pathname === "/login") {
+  // ただし error パラメータがある場合（customer がアクセス拒否された場合など）は
+  // リダイレクトしない。しなければ /menu → /login?error=forbidden → /menu の
+  // 無限ループが発生する。
+  if (
+    user &&
+    pathname === "/login" &&
+    !request.nextUrl.searchParams.has("error")
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/menu";
     url.search = "";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
 
   return response;

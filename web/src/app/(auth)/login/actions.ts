@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import type { Provider } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { safeInternalPath } from "@/lib/url";
 
 /**
  * ログイン関連の Server Actions。
@@ -13,14 +14,6 @@ import { createClient } from "@/lib/supabase/server";
  */
 
 export type LoginState = { error: string | null };
-
-/** ログイン後の遷移先を検証する（オープンリダイレクト防止）。 */
-function safeNext(next: FormDataEntryValue | null): string {
-  const value = typeof next === "string" ? next : "";
-  // 自サイト内の絶対パスのみ許可（"//" は外部扱いで拒否）。
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
-  return "/menu";
-}
 
 /**
  * メール＋パスワードでサインインする Server Action。
@@ -32,7 +25,7 @@ export async function signInWithPassword(
 ): Promise<LoginState> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const next = safeNext(formData.get("next"));
+  const next = safeInternalPath(formData.get("next"));
 
   if (!email || !password) {
     return { error: "メールアドレスとパスワードを入力してください。" };
@@ -55,7 +48,7 @@ export async function signInWithPassword(
  */
 export async function signInWithOAuth(formData: FormData): Promise<void> {
   const provider = String(formData.get("provider") ?? "") as Provider;
-  const next = safeNext(formData.get("next"));
+  const next = safeInternalPath(formData.get("next"));
 
   const origin = (await headers()).get("origin") ?? "";
   const supabase = await createClient();
