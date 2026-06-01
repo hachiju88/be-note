@@ -79,6 +79,14 @@ $$;
 create policy p_note_type_select on public.t_note_type
   for select to authenticated using (true);
 
+-- ⚡ 性能: ポリシー内の判定関数はスカラサブクエリ `(select ...)` で包む。
+--    is_staff()/is_admin() は STABLE だが SECURITY DEFINER のためインライン化されず、
+--    素で書くと行ごとに評価され t_staff を引く（RLS の N+1）。サブクエリ化で
+--    クエリ当たり1回（InitPlan）に固定できる（Supabase 推奨の RLS 最適化）。
+--    t_staff.user_id は UNIQUE 索引付きのため実質1回のインデックス探索で済む。
+--    TODO(M1): 認証フックで JWT(app_metadata)に is_staff/is_admin を載せ、
+--              `(auth.jwt()->'app_metadata'->>'is_staff')::boolean` 判定に切替えれば DB 問い合わせ自体を無くせる。
+
 -- 4-2. 一括ポリシー生成 ------------------------------------------------
 do $$
 declare
@@ -93,17 +101,17 @@ begin
   -- マスタ・設定
   foreach tbl in array master_tables loop
     execute format(
-      'create policy p_select on public.%I for select to authenticated using (public.is_staff());', tbl);
+      'create policy p_select on public.%I for select to authenticated using ((select public.is_staff()));', tbl);
     execute format(
-      'create policy p_modify on public.%I for all to authenticated using (public.is_admin()) with check (public.is_admin());', tbl);
+      'create policy p_modify on public.%I for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));', tbl);
   end loop;
 
-  -- 全操作ポリシー（材料=admin / 業務データ=staff）を (判定関数, テーブル群) で一括生成
+  -- 全操作ポリシー（材料=admin / 業務データ=staff）を (判定式, テーブル群) で一括生成
   for spec in
-    select 'public.is_admin()' as fn,
+    select '(select public.is_admin())' as fn,
            array['t_material','t_material_transaction'] as tables
     union all
-    select 'public.is_staff()' as fn,
+    select '(select public.is_staff())' as fn,
            array['t_client','t_client_salon','t_be_note','t_reservation',
                  't_menu','t_sold_item','t_discount','t_photo'] as tables
   loop
