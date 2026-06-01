@@ -1,20 +1,307 @@
-import ScreenPlaceholder from "@/components/ScreenPlaceholder";
+"use client";
 
-export default async function BeNotePage({
-  params,
-}: PageProps<"/be_note/[client_id]">) {
-  const { client_id } = await params;
+import { useState } from "react";
+import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
+import { ChevronRight, Send } from "lucide-react";
+
+// ---- モックデータ ----
+
+const MOCK_CLIENT = {
+  clientName: "佐藤 美咲",
+  clientKana: "サトウ ミサキ",
+  sex: "女性",
+  age: 32,
+  rank: "S",
+  totalVisit: 18,
+};
+
+type MenuItem = { name: string; staff: string; price: number; startTime?: string; endTime?: string };
+type DiscountItem = { name: string; price: number };
+type PhotoItem = { label: string; url: string };
+
+type VisitNote = {
+  id: string;
+  date: string;
+  staff: string;
+  status: string;
+  menus: MenuItem[];
+  discounts: DiscountItem[];
+  photos: PhotoItem[];
+  total: number;
+};
+
+const MOCK_VISITS: VisitNote[] = [
+  {
+    id: "n001",
+    date: "2026-06-01 10:30",
+    staff: "田中 太郎",
+    status: "in_progress",
+    menus: [
+      { name: "カット", staff: "田中 太郎", price: 5500, startTime: "10:30", endTime: "11:30" },
+      { name: "トリートメント", staff: "山本 さくら", price: 3300, startTime: "11:30", endTime: "12:00" },
+    ],
+    discounts: [{ name: "リピート割引", price: -550 }],
+    photos: [
+      { label: "Before", url: "" },
+      { label: "After", url: "" },
+    ],
+    total: 8250,
+  },
+  {
+    id: "n002",
+    date: "2026-04-15 13:00",
+    staff: "田中 太郎",
+    status: "done",
+    menus: [
+      { name: "カット＋カラー", staff: "田中 太郎", price: 12100 },
+    ],
+    discounts: [],
+    photos: [],
+    total: 12100,
+  },
+  {
+    id: "n003",
+    date: "2026-02-20 11:00",
+    staff: "鈴木 一郎",
+    status: "done",
+    menus: [
+      { name: "パーマ", staff: "鈴木 一郎", price: 9900 },
+    ],
+    discounts: [{ name: "誕生日割引", price: -990 }],
+    photos: [],
+    total: 8910,
+  },
+];
+
+type DmMessage = { id: string; text: string; isClient: boolean; time: string };
+
+const MOCK_DM: DmMessage[] = [
+  { id: "m1", text: "次回もよろしくお願いします！", isClient: true, time: "4/15 14:00" },
+  { id: "m2", text: "ありがとうございます。またのご来店をお待ちしております 😊", isClient: false, time: "4/15 15:30" },
+  { id: "m3", text: "ヘアカタログを見ていたのですが、次回はハイライトを入れてみたいです", isClient: true, time: "5/20 10:00" },
+  { id: "m4", text: "ハイライト、ぜひご相談しましょう！カウンセリングのお時間をとりますね", isClient: false, time: "5/20 11:00" },
+];
+
+const MOCK_FUTURE = [
+  { date: "2026-07-05 11:00", menu: "カット＋ハイライト", staff: "田中 太郎" },
+];
+
+const STATUS_LABEL: Record<string, string> = {
+  confirmed: "予約済", checked_in: "来店", in_progress: "施術中", done: "会計済",
+  cancelled: "キャンセル", rejected: "却下", draft: "下書き", requested: "リクエスト", pending: "保留中",
+};
+
+const STATUS_CLASS: Record<string, string> = {
+  confirmed: "bg-blue-50 text-blue-700",
+  checked_in: "bg-yellow-50 text-yellow-700",
+  in_progress: "bg-green-50 text-green-700",
+  done: "bg-gray-100 text-gray-500",
+  cancelled: "bg-red-50 text-red-400",
+};
+
+// ---- コンポーネント ----
+
+function VisitNotePanel({ note }: { note: VisitNote }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {/* ヘッダ情報 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500">{note.date}</p>
+          <p className="text-sm text-gray-600">担当：{note.staff}</p>
+        </div>
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[note.status] ?? "bg-gray-100 text-gray-500"}`}>
+          {STATUS_LABEL[note.status] ?? note.status}
+        </span>
+      </div>
+
+      {/* 施術明細 */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">施術</h4>
+        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+          {note.menus.map((m, i) => (
+            <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+              <div>
+                <p className="font-medium text-gray-800">{m.name}</p>
+                <p className="text-xs text-gray-400">{m.staff}{m.startTime && ` / ${m.startTime}〜${m.endTime}`}</p>
+              </div>
+              <span className="font-mono text-gray-700">¥{m.price.toLocaleString()}</span>
+            </div>
+          ))}
+          {note.discounts.map((d, i) => (
+            <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+              <p className="text-gray-600">{d.name}</p>
+              <span className="font-mono text-red-500">¥{d.price.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 写真 */}
+      {note.photos.length > 0 && (
+        <div>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">写真</h4>
+          <div className="flex gap-3">
+            {note.photos.map((p, i) => (
+              <div key={i} className="flex flex-col items-center gap-1">
+                <div className="size-24 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-400">
+                  {p.label}
+                </div>
+                <span className="text-xs text-gray-400">{p.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 合計・会計ボタン */}
+      <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+        <div>
+          <p className="text-xs text-gray-400">合計（税込）</p>
+          <p className="text-xl font-bold text-gray-900">¥{note.total.toLocaleString()}</p>
+        </div>
+        {note.status !== "done" && (
+          <button className="flex items-center gap-1 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+            <ChevronRight size={14} />
+            会計
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function BeNotePage() {
+  const [selectedVisitId, setSelectedVisitId] = useState(MOCK_VISITS[0].id);
+  const [dmText, setDmText] = useState("");
+  const [messages, setMessages] = useState(MOCK_DM);
+
+  const selectedVisit = MOCK_VISITS.find((v) => v.id === selectedVisitId) ?? MOCK_VISITS[0];
+
+  function sendMessage() {
+    if (!dmText.trim()) return;
+    setMessages((prev) => [
+      ...prev,
+      { id: `m${Date.now()}`, text: dmText.trim(), isClient: false, time: "今" },
+    ]);
+    setDmText("");
+  }
 
   return (
-    <ScreenPlaceholder
-      title="Be:note"
-      url={`/be_note/${client_id}`}
-      role="staff / admin / customer（自分のみ）"
-      description="顧客カルテ兼交換ノート。note 一覧（木構造）・DM・未来予約参照。"
-      apis={[
-        "GET /clients/{client_id}/notes",
-        "POST /clients/{client_id}/notes",
-      ]}
-    />
+    <div className="flex min-h-screen flex-col">
+      <AppHeader title="Be:note" navLinks={[{ label: "← 戻る", href: "/clerk" }]} />
+
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        {/* 顧客ヘッダ */}
+        <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-4">
+          <div>
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-xl font-bold text-gray-900">{MOCK_CLIENT.clientName} 様</h2>
+              <span className="text-sm text-gray-400">（{MOCK_CLIENT.clientKana}）</span>
+            </div>
+            <div className="mt-1 flex items-center gap-3 text-sm text-gray-500">
+              <span>{MOCK_CLIENT.sex} / {MOCK_CLIENT.age}歳</span>
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
+                ランク {MOCK_CLIENT.rank}
+              </span>
+              <span>来店 {MOCK_CLIENT.totalVisit} 回目</span>
+            </div>
+          </div>
+          <button className="flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            <ChevronRight size={14} />
+            詳細情報
+          </button>
+        </div>
+
+        {/* note + History 2カラム */}
+        <div className="grid grid-cols-3 gap-4">
+          {/* 来店 note（左2/3） */}
+          <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-5">
+            <h3 className="mb-4 text-sm font-semibold text-gray-700">来店 note</h3>
+            <VisitNotePanel note={selectedVisit} />
+          </div>
+
+          {/* History_note（右1/3） */}
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-sm font-semibold text-gray-700">History</h3>
+            <div className="flex flex-col gap-2">
+              {MOCK_VISITS.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => setSelectedVisitId(v.id)}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                    v.id === selectedVisitId
+                      ? "border-indigo-300 bg-indigo-50"
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <p className="font-semibold text-gray-800">{v.date.slice(0, 10)}</p>
+                  <p className="text-gray-500">{v.staff}</p>
+                  <p className="text-gray-500">{v.menus[0]?.name}</p>
+                  <p className="font-mono text-gray-700">¥{v.total.toLocaleString()}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* DM エリア */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-700">DM（交換ノート）</h3>
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-3">
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.isClient ? "justify-start" : "justify-end"}`}>
+                <div className={`max-w-xs rounded-xl px-3 py-2 text-sm ${
+                  m.isClient
+                    ? "bg-gray-100 text-gray-800"
+                    : "bg-indigo-600 text-white"
+                }`}>
+                  <p>{m.text}</p>
+                  <p className={`mt-0.5 text-xs ${m.isClient ? "text-gray-400" : "text-indigo-200"}`}>{m.time}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={dmText}
+              onChange={(e) => setDmText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              placeholder="メッセージを入力..."
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            <button
+              onClick={sendMessage}
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              <Send size={14} />
+              送信
+            </button>
+          </div>
+        </div>
+
+        {/* 未来予約 */}
+        {MOCK_FUTURE.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <h3 className="mb-3 text-sm font-semibold text-gray-700">確定済み予約</h3>
+            <div className="flex flex-col gap-2">
+              {MOCK_FUTURE.map((f, i) => (
+                <div key={i} className="flex items-center gap-4 rounded-lg bg-blue-50 px-4 py-3 text-sm">
+                  <span className="font-medium text-blue-800">{f.date}</span>
+                  <span className="text-blue-700">{f.menu}</span>
+                  <span className="text-blue-600">{f.staff}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400">
+          ※ モックアップ。ダミーデータを表示しています。
+        </p>
+      </div>
+    </div>
   );
 }
