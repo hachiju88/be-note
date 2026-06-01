@@ -139,9 +139,9 @@ supabase start            # ローカルスタック起動（要 Docker）
 supabase db reset         # migrations を初期適用（検証）
 supabase migration new <name>   # 新規マイグレーション作成
 ```
-- マイグレーションは `supabase/migrations/` にドメイン別6本（拡張→マスタ→顧客→Be:note→予約→材料）。FK 依存順に適用される。
+- マイグレーションは `supabase/migrations/` にドメイン別7本（拡張→マスタ→顧客→Be:note→予約→材料→RLS）。FK 依存順に適用される。検証用 seed は `supabase/seed.sql`（`config.toml` の `[db.seed]` で連携）。
 - 全 DDL は `docs/DB設計書.md` を正典に作成。ダブルブッキングは `t_reservation.no_double_booking`（EXCLUDE）、シフト重複は `t_shift.no_shift_overlap`。
-- RLS（行レベルセキュリティ）は未導入。方針確定後に別マイグレーションで追加予定。
+- RLS（行レベルセキュリティ）導入済み（`07_rls.sql`）。deny-by-default＋`is_staff()`/`is_admin()` 判定。正面は `/api/v1`（service_role はバイパス）、staff/admin のみ `authenticated` で直接アクセス可、customer は API 経由限定。詳細は `docs/DB設計書.md`「行レベルセキュリティ（RLS）」。
 
 ---
 
