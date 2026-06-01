@@ -6,7 +6,7 @@ import { safeInternalPath } from "@/lib/url";
  * OAuth コールバック（/auth/callback）。
  * Supabase から戻ってきた認可コードをセッションに交換し、next へリダイレクトする。
  *
- * このパスは proxy の PUBLIC_PATHS（/auth）に含めて未認証アクセスを許可している。
+ * customer（t_staff に存在しないユーザー）はサインアウトして弾く。
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
@@ -16,8 +16,21 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && data.user) {
+      // t_staff に存在しない customer は管理ツール不可のためサインアウトして弾く。
+      const { data: staff } = await supabase
+        .from("t_staff")
+        .select("is_admin")
+        .eq("user_id", data.user.id)
+        .eq("delete_flg", false)
+        .maybeSingle();
+
+      if (!staff) {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(`${origin}/login?error=forbidden`);
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
