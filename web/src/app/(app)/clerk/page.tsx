@@ -4,7 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 
-type ReservationStatus = "confirmed" | "checked_in" | "in_progress" | "done";
+// 設計書（予約ロジック設計書）の全ステータスを網羅する
+type ReservationStatus =
+  | "draft"
+  | "requested"
+  | "pending"
+  | "confirmed"
+  | "checked_in"
+  | "in_progress"
+  | "done"
+  | "cancelled"
+  | "rejected";
 
 type Reservation = {
   id: string;
@@ -28,17 +38,27 @@ const MOCK_RESERVATIONS: Reservation[] = [
 ];
 
 const STATUS_LABEL: Record<ReservationStatus, string> = {
+  draft: "下書き",
+  requested: "リクエスト",
+  pending: "保留中",
   confirmed: "予約済",
   checked_in: "来店",
   in_progress: "施術中",
   done: "会計済",
+  cancelled: "キャンセル",
+  rejected: "却下",
 };
 
 const STATUS_CLASS: Record<ReservationStatus, string> = {
+  draft: "bg-gray-50 text-gray-400 border-gray-200",
+  requested: "bg-purple-50 text-purple-700 border-purple-200",
+  pending: "bg-orange-50 text-orange-700 border-orange-200",
   confirmed: "bg-blue-50 text-blue-700 border-blue-200",
   checked_in: "bg-yellow-50 text-yellow-700 border-yellow-200",
   in_progress: "bg-green-50 text-green-700 border-green-200",
   done: "bg-gray-50 text-gray-500 border-gray-200",
+  cancelled: "bg-red-50 text-red-400 border-red-200",
+  rejected: "bg-red-50 text-red-400 border-red-200",
 };
 
 export default function ClerkPage() {
@@ -85,7 +105,17 @@ export default function ClerkPage() {
             <input
               type="checkbox"
               checked={showDone}
-              onChange={(e) => setShowDone(e.target.checked)}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setShowDone(next);
+                if (!next) {
+                  // done 行を非表示にする際、選択状態から done の ID を除去する
+                  const doneIds = new Set(
+                    MOCK_RESERVATIONS.filter((r) => r.status === "done").map((r) => r.id)
+                  );
+                  setSelected((prev) => new Set([...prev].filter((id) => !doneIds.has(id))));
+                }
+              }}
               className="size-4 rounded border-gray-300"
             />
             会計済みを表示
