@@ -301,6 +301,8 @@ export default function BeNotePage() {
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    // 選び直しの場合は前のオブジェクトURLを解放する
+    if (pendingImage) URL.revokeObjectURL(pendingImage);
     const url = URL.createObjectURL(file);
     setPendingImage(url);
     e.target.value = "";
@@ -407,7 +409,10 @@ export default function BeNotePage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={pendingImage} alt="添付プレビュー" className="h-20 rounded-lg border border-gray-200 object-cover" />
               <button
-                onClick={() => setPendingImage(null)}
+                onClick={() => {
+                  URL.revokeObjectURL(pendingImage);
+                  setPendingImage(null);
+                }}
                 className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-gray-600 text-white hover:bg-gray-800"
               >
                 <X size={10} />

@@ -39,7 +39,8 @@ export default function MaterialPage() {
 
   function handleTransaction() {
     const qty = parseFloat(txQty);
-    if (!selected || isNaN(qty) || qty <= 0) return;
+    // 棚卸調整は0を許容（在庫を0にできる）、入庫・出庫は正の数のみ
+    if (!selected || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0)) return;
     setMaterials((prev) =>
       prev.map((m) => {
         if (m.id !== selected.id) return m;
