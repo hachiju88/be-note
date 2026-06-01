@@ -18,6 +18,11 @@ major_version = 15
 [db.pooler]
 enabled = false
 
+# db reset 時に migrations 適用後へ投入する検証用シード
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
 [studio]
 enabled = true
 port = 54323
@@ -43,10 +48,21 @@ enable_signup = true
 enable_signup = true
 enable_confirmations = false
 
-# フェーズ1のソーシャルログイン（Google / Instagram）は
-# 各プロバイダのクレデンシャル設定後に有効化する。
+# --- フェーズ1のソーシャルログイン ---------------------------------
+# クレデンシャルは env 参照（env(NAME)）。実値は web/.env.local 等に置き、
+# config.toml にはハードコードしないこと。
+#
+# Google（Supabase ネイティブ対応）: クレデンシャル設定後に有効化。
 # [auth.external.google]
 # enabled = true
+# client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+# secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+#
+# Instagram: Supabase のネイティブ外部プロバイダではない（要注意）。
+#   - Instagram Login は Facebook(Meta) 基盤のため、Meta アプリ経由の
+#     カスタム OIDC / 独自フローでの連携を別途検討する（M1 の認証設計で確定）。
+# Be:note 独自ログイン: [auth.email]（上記）で enable_signup を使う前提。
+# LINE はフェーズ2（本フェーズでは設定しない）。
 
 [analytics]
 enabled = false
