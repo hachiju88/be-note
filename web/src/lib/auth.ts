@@ -81,12 +81,11 @@ export async function requireAuth(): Promise<AuthContext> {
 
 /**
  * staff 以上（staff / admin）必須ガード。
- * 未認証 → /login、customer → /be_note（自分のページ）へ退避。
+ * 未認証 → /login、customer → /login?error=forbidden へ退避。
  */
 export async function requireStaff(): Promise<AuthContext> {
   const ctx = await requireAuth();
   if (ctx.role === "customer") {
-    // staff 用 Web 管理ツールには customer は入れない。
     redirect("/login?error=forbidden");
   }
   return ctx;
@@ -98,7 +97,7 @@ export async function requireStaff(): Promise<AuthContext> {
 export async function requireAdmin(): Promise<AuthContext> {
   const ctx = await requireStaff();
   if (ctx.role !== "admin") {
-    redirect("/menu?error=forbidden");
+    redirect("/menu");
   }
   return ctx;
 }
