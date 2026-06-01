@@ -9,12 +9,19 @@ import LoginForm from "./LoginForm";
  */
 export default function LoginPage() {
   return (
-    <main className="mx-auto flex min-h-full max-w-md flex-col justify-center p-8">
-      <h1 className="text-2xl font-bold">Be:note 管理ツール</h1>
-      <p className="mt-1 text-sm text-gray-600">ログインしてください。</p>
-      <Suspense>
-        <LoginForm />
-      </Suspense>
-    </main>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Be:note</h1>
+          <p className="mt-1 text-sm text-gray-500">管理ツール ログイン</p>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+      </div>
+    </div>
   );
 }
