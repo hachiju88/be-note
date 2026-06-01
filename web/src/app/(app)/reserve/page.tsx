@@ -94,8 +94,8 @@ export default function ReservePage() {
           <div className="flex">
             {/* 時間軸（sticky left） */}
             <div className="sticky left-0 z-10 w-16 shrink-0 border-r border-gray-200 bg-white">
-              {/* スタッフ名行ヘッダの高さ分の空白 */}
-              <div className="h-10 border-b border-gray-200" />
+              {/* スタッフ名行ヘッダの高さ分の空白（sticky でスタッフ列ヘッダと高さを揃える） */}
+              <div className="sticky top-0 z-20 h-10 border-b border-gray-200 bg-white" />
               <div className="relative" style={{ height: totalHeight }}>
                 {Array.from({ length: TOTAL_SLOTS }).map((_, slot) => (
                   <div

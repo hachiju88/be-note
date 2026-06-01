@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { ChevronRight, Paperclip, Plus, Send, X } from "lucide-react";
 import { ReservationStatus, STATUS_CLASS, STATUS_LABEL } from "@/lib/reservationStatus";
@@ -269,6 +270,10 @@ function VisitNotePanel({ note, onAddMenu }: VisitNotePanelProps) {
 // ---- メインページ ----
 
 export default function BeNotePage() {
+  const params = useParams<{ client_id: string }>();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const clientId = params.client_id; // API 接続フェーズで使用
+
   const [visits, setVisits] = useState(INITIAL_VISITS);
   const [selectedVisitId, setSelectedVisitId] = useState(INITIAL_VISITS[0].id);
   const [dmText, setDmText] = useState("");
@@ -276,13 +281,14 @@ export default function BeNotePage() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // アンマウント時に未送信の objectURL を解放する
+  // ref でレンダーごとに最新値を保持し、アンマウント時に未送信の objectURL を解放する
+  // （useEffect の [] 依存ではクロージャが古くなるため ref パターンを使用）
+  const pendingImageRef = useRef<string | null>(null);
+  pendingImageRef.current = pendingImage;
   useEffect(() => {
     return () => {
-      if (pendingImage) URL.revokeObjectURL(pendingImage);
+      if (pendingImageRef.current) URL.revokeObjectURL(pendingImageRef.current);
     };
-    // pendingImage を依存配列に入れると毎回 effect が再実行されるため除外
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedVisit = visits.find((v) => v.id === selectedVisitId) ?? visits[0];

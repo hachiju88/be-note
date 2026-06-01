@@ -88,7 +88,7 @@ export default function BoardPage() {
             </thead>
             <tbody>
               {MOCK_STAFF.map((staff, staffIdx) => (
-                <tr key={staff.id} className={staffIdx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+                <tr key={staff.id} className={staffIdx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="sticky left-0 z-10 border-b border-r border-gray-200 bg-inherit px-3 py-3">
                     <div className="text-xs font-medium text-gray-900">{staff.name}</div>
                     <div className="mt-0.5 text-xs text-gray-400">{ROLE_LABEL[staff.role]}</div>
