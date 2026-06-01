@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import { ChevronDown } from "lucide-react";
+import { MOCK_STAFF, ROLE_LABEL } from "@/lib/mockStaff";
 
 const TASKS = [
   "check in",
@@ -17,14 +18,6 @@ const TASKS = [
   "check out",
 ];
 
-type StaffRole = "stylist" | "assistant";
-
-type Staff = {
-  id: string;
-  name: string;
-  role: StaffRole;
-};
-
 type Card = {
   id: string;
   clientName: string;
@@ -34,12 +27,6 @@ type Card = {
   staffId: string;
   taskIndex: number;
 };
-
-const MOCK_STAFF: Staff[] = [
-  { id: "s001", name: "田中 太郎", role: "stylist" },
-  { id: "s002", name: "鈴木 一郎", role: "stylist" },
-  { id: "s003", name: "山本 さくら", role: "assistant" },
-];
 
 const MOCK_CARDS: Card[] = [
   { id: "c001", clientName: "佐藤 美咲", clientId: "cl002", timeRange: "10:30〜11:30", menu: "カット", staffId: "s002", taskIndex: 4 },
@@ -51,10 +38,10 @@ const MOCK_DONE_CARDS: Card[] = [
   { id: "d001", clientName: "山田 花子", clientId: "cl001", timeRange: "10:00〜11:00", menu: "カット＋カラー", staffId: "s001", taskIndex: 8 },
 ];
 
-const ROLE_LABEL: Record<StaffRole, string> = {
-  stylist: "スタイリスト",
-  assistant: "アシスタント",
-};
+// O(1) ルックアップ用 Map: `${staffId}:${taskIndex}` → Card
+const CARD_MAP = new Map(
+  MOCK_CARDS.map((c) => [`${c.staffId}:${c.taskIndex}`, c])
+);
 
 export default function BoardPage() {
   const [showDone, setShowDone] = useState(false);
@@ -64,6 +51,7 @@ export default function BoardPage() {
       <AppHeader
         title="予約ボード"
         navLinks={[
+          { label: "← メニュー", href: "/menu" },
           { label: "clerk", href: "/clerk" },
           { label: "reserve", href: "/reserve" },
         ]}
@@ -106,9 +94,7 @@ export default function BoardPage() {
                     <div className="mt-0.5 text-xs text-gray-400">{ROLE_LABEL[staff.role]}</div>
                   </td>
                   {TASKS.map((task, taskIdx) => {
-                    const card = MOCK_CARDS.find(
-                      (c) => c.staffId === staff.id && c.taskIndex === taskIdx
-                    );
+                    const card = CARD_MAP.get(`${staff.id}:${taskIdx}`);
                     return (
                       <td
                         key={task}

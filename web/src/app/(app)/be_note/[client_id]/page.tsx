@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import { ChevronRight, Paperclip, Plus, Send, X } from "lucide-react";
+import { ReservationStatus, STATUS_CLASS, STATUS_LABEL } from "@/lib/reservationStatus";
+import { MOCK_STAFF, MOCK_STAFF_NAMES } from "@/lib/mockStaff";
 
 // ---- モックデータ ----
 
@@ -15,8 +17,6 @@ const MOCK_CLIENT = {
   totalVisit: 18,
 };
 
-const MOCK_STAFF_LIST = ["田中 太郎", "鈴木 一郎", "山本 さくら"];
-
 type MenuItem = { name: string; staff: string; price: number; startTime?: string; endTime?: string };
 type DiscountItem = { name: string; price: number };
 type PhotoItem = { label: string; url: string };
@@ -25,12 +25,18 @@ type VisitNote = {
   id: string;
   date: string;
   staff: string;
-  status: string;
+  status: ReservationStatus;
   menus: MenuItem[];
   discounts: DiscountItem[];
   photos: PhotoItem[];
-  total: number;
 };
+
+function noteTotal(note: VisitNote) {
+  return (
+    note.menus.reduce((s, m) => s + m.price, 0) +
+    note.discounts.reduce((s, d) => s + d.price, 0)
+  );
+}
 
 const INITIAL_VISITS: VisitNote[] = [
   {
@@ -47,7 +53,6 @@ const INITIAL_VISITS: VisitNote[] = [
       { label: "Before", url: "" },
       { label: "After", url: "" },
     ],
-    total: 8250,
   },
   {
     id: "n002",
@@ -57,7 +62,6 @@ const INITIAL_VISITS: VisitNote[] = [
     menus: [{ name: "カット＋カラー", staff: "田中 太郎", price: 12100 }],
     discounts: [],
     photos: [],
-    total: 12100,
   },
   {
     id: "n003",
@@ -67,7 +71,6 @@ const INITIAL_VISITS: VisitNote[] = [
     menus: [{ name: "パーマ", staff: "鈴木 一郎", price: 9900 }],
     discounts: [{ name: "誕生日割引", price: -990 }],
     photos: [],
-    total: 8910,
   },
 ];
 
@@ -87,20 +90,8 @@ const INITIAL_DM: DmMessage[] = [
 ];
 
 const MOCK_FUTURE = [
-  { date: "2026-07-05 11:00", menu: "カット＋ハイライト", staff: "田中 太郎" },
+  { date: "2026-07-05 11:00", menu: "カット＋ハイライト", staff: MOCK_STAFF[0].name },
 ];
-
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "予約済", checked_in: "来店", in_progress: "施術中", done: "会計済",
-  cancelled: "キャンセル", rejected: "却下", draft: "下書き", requested: "リクエスト", pending: "保留中",
-};
-const STATUS_CLASS: Record<string, string> = {
-  confirmed: "bg-blue-50 text-blue-700",
-  checked_in: "bg-yellow-50 text-yellow-700",
-  in_progress: "bg-green-50 text-green-700",
-  done: "bg-gray-100 text-gray-500",
-  cancelled: "bg-red-50 text-red-400",
-};
 
 // ---- 施術追加フォーム ----
 
@@ -111,7 +102,7 @@ type AddMenuFormProps = {
 
 function AddMenuForm({ onAdd, onCancel }: AddMenuFormProps) {
   const [name, setName] = useState("");
-  const [staff, setStaff] = useState(MOCK_STAFF_LIST[0]);
+  const [staff, setStaff] = useState(MOCK_STAFF_NAMES[0]);
   const [price, setPrice] = useState("");
 
   function handleSubmit() {
@@ -137,7 +128,7 @@ function AddMenuForm({ onAdd, onCancel }: AddMenuFormProps) {
             onChange={(e) => setStaff(e.target.value)}
             className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
           >
-            {MOCK_STAFF_LIST.map((s) => (
+            {MOCK_STAFF_NAMES.map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
@@ -181,8 +172,7 @@ type VisitNotePanelProps = {
 function VisitNotePanel({ note, onAddMenu }: VisitNotePanelProps) {
   const [showAddForm, setShowAddForm] = useState(false);
 
-  const subtotal = note.menus.reduce((s, m) => s + m.price, 0)
-    + note.discounts.reduce((s, d) => s + d.price, 0);
+  const subtotal = noteTotal(note);
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,7 +182,7 @@ function VisitNotePanel({ note, onAddMenu }: VisitNotePanelProps) {
           <p className="text-sm text-gray-500">{note.date}</p>
           <p className="text-sm text-gray-600">担当：{note.staff}</p>
         </div>
-        <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[note.status] ?? "bg-gray-100 text-gray-500"}`}>
+        <span className={`rounded border px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[note.status] ?? "bg-gray-100 text-gray-500"}`}>
           {STATUS_LABEL[note.status] ?? note.status}
         </span>
       </div>
@@ -286,13 +276,22 @@ export default function BeNotePage() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // アンマウント時に未送信の objectURL を解放する
+  useEffect(() => {
+    return () => {
+      if (pendingImage) URL.revokeObjectURL(pendingImage);
+    };
+    // pendingImage を依存配列に入れると毎回 effect が再実行されるため除外
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const selectedVisit = visits.find((v) => v.id === selectedVisitId) ?? visits[0];
 
   function handleAddMenu(item: MenuItem) {
     setVisits((prev) =>
       prev.map((v) =>
         v.id === selectedVisitId
-          ? { ...v, menus: [...v.menus, item], total: v.total + item.price }
+          ? { ...v, menus: [...v.menus, item] }
           : v
       )
     );
@@ -301,7 +300,6 @@ export default function BeNotePage() {
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    // 選び直しの場合は前のオブジェクトURLを解放する
     if (pendingImage) URL.revokeObjectURL(pendingImage);
     const url = URL.createObjectURL(file);
     setPendingImage(url);
@@ -326,7 +324,7 @@ export default function BeNotePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <AppHeader title="Be:note" navLinks={[{ label: "← 戻る", href: "/clerk" }]} />
+      <AppHeader title="Be:note" navLinks={[{ label: "← メニュー", href: "/menu" }, { label: "← 戻る", href: "/clerk" }]} />
 
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* 顧客ヘッダ */}
@@ -354,7 +352,8 @@ export default function BeNotePage() {
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="mb-4 text-sm font-semibold text-gray-700">来店 note</h3>
-            <VisitNotePanel note={selectedVisit} onAddMenu={handleAddMenu} />
+            {/* key でノート切替時に showAddForm などのローカル state をリセットする */}
+            <VisitNotePanel key={selectedVisit.id} note={selectedVisit} onAddMenu={handleAddMenu} />
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-gray-700">History</h3>
@@ -372,7 +371,7 @@ export default function BeNotePage() {
                   <p className="font-semibold text-gray-800">{v.date.slice(0, 10)}</p>
                   <p className="text-gray-500">{v.staff}</p>
                   <p className="text-gray-500">{v.menus[0]?.name}</p>
-                  <p className="font-mono text-gray-700">¥{v.total.toLocaleString()}</p>
+                  <p className="font-mono text-gray-700">¥{noteTotal(v).toLocaleString()}</p>
                 </button>
               ))}
             </div>

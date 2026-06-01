@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import AppHeader from "@/components/AppHeader";
+import { MOCK_STAFF } from "@/lib/mockStaff";
 
 // 営業時間 9:00〜20:00、15分刻み
 const START_HOUR = 9;
@@ -31,11 +32,6 @@ type Reservation = {
   durationSlots: number;
 };
 
-const MOCK_STAFF = [
-  { id: "s001", name: "田中 太郎", role: "stylist" },
-  { id: "s002", name: "鈴木 一郎", role: "stylist" },
-  { id: "s003", name: "山本 さくら", role: "assistant" },
-];
 
 const MOCK_RESERVATIONS: Reservation[] = [
   { id: "r001", clientName: "山田 花子", clientId: "cl001", menu: "カット＋カラー", staffId: "s001", startSlot: timeToSlot(10, 0), durationSlots: 6 },
@@ -67,6 +63,7 @@ export default function ReservePage() {
       <AppHeader
         title="予約管理"
         navLinks={[
+          { label: "← メニュー", href: "/menu" },
           { label: "clerk", href: "/clerk" },
           { label: "board", href: "/board" },
         ]}

@@ -39,20 +39,26 @@ export default function MaterialPage() {
 
   function handleTransaction() {
     const qty = parseFloat(txQty);
-    // 棚卸調整は0を許容（在庫を0にできる）、入庫・出庫は正の数のみ
     if (!selected || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0)) return;
-    setMaterials((prev) =>
-      prev.map((m) => {
-        if (m.id !== selected.id) return m;
-        const delta = txType === "in" ? qty : txType === "out" ? -qty : qty - m.stock;
-        return { ...m, stock: Math.max(0, m.stock + delta) };
-      })
-    );
+
+    const newMaterials = materials.map((m) => {
+      if (m.id !== selected.id) return m;
+      const delta = txType === "in" ? qty : txType === "out" ? -qty : qty - m.stock;
+      return { ...m, stock: Math.max(0, m.stock + delta) };
+    });
+    setMaterials(newMaterials);
+    // 選択中材料の在庫表示を最新値に同期する
+    const updated = newMaterials.find((m) => m.id === selected.id);
+    if (updated) setSelected(updated);
+
     setTxQty("");
     setTxMemo("");
   }
 
   const lowCount = materials.filter((m) => m.stock <= m.reorderPoint).length;
+
+  const qty = parseFloat(txQty);
+  const txQtyInvalid = txQty === "" || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -175,7 +181,7 @@ export default function MaterialPage() {
                 />
                 <button
                   onClick={handleTransaction}
-                  disabled={!txQty}
+                  disabled={txQtyInvalid}
                   className="rounded bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
                 >
                   登録
