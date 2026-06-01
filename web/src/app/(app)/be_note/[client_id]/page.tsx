@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
-import { ChevronRight, Send } from "lucide-react";
+import { ChevronRight, Paperclip, Plus, Send, X } from "lucide-react";
 
 // ---- モックデータ ----
 
@@ -15,6 +14,8 @@ const MOCK_CLIENT = {
   rank: "S",
   totalVisit: 18,
 };
+
+const MOCK_STAFF_LIST = ["田中 太郎", "鈴木 一郎", "山本 さくら"];
 
 type MenuItem = { name: string; staff: string; price: number; startTime?: string; endTime?: string };
 type DiscountItem = { name: string; price: number };
@@ -31,7 +32,7 @@ type VisitNote = {
   total: number;
 };
 
-const MOCK_VISITS: VisitNote[] = [
+const INITIAL_VISITS: VisitNote[] = [
   {
     id: "n001",
     date: "2026-06-01 10:30",
@@ -53,9 +54,7 @@ const MOCK_VISITS: VisitNote[] = [
     date: "2026-04-15 13:00",
     staff: "田中 太郎",
     status: "done",
-    menus: [
-      { name: "カット＋カラー", staff: "田中 太郎", price: 12100 },
-    ],
+    menus: [{ name: "カット＋カラー", staff: "田中 太郎", price: 12100 }],
     discounts: [],
     photos: [],
     total: 12100,
@@ -65,18 +64,22 @@ const MOCK_VISITS: VisitNote[] = [
     date: "2026-02-20 11:00",
     staff: "鈴木 一郎",
     status: "done",
-    menus: [
-      { name: "パーマ", staff: "鈴木 一郎", price: 9900 },
-    ],
+    menus: [{ name: "パーマ", staff: "鈴木 一郎", price: 9900 }],
     discounts: [{ name: "誕生日割引", price: -990 }],
     photos: [],
     total: 8910,
   },
 ];
 
-type DmMessage = { id: string; text: string; isClient: boolean; time: string };
+type DmMessage = {
+  id: string;
+  text?: string;
+  imageUrl?: string;
+  isClient: boolean;
+  time: string;
+};
 
-const MOCK_DM: DmMessage[] = [
+const INITIAL_DM: DmMessage[] = [
   { id: "m1", text: "次回もよろしくお願いします！", isClient: true, time: "4/15 14:00" },
   { id: "m2", text: "ありがとうございます。またのご来店をお待ちしております 😊", isClient: false, time: "4/15 15:30" },
   { id: "m3", text: "ヘアカタログを見ていたのですが、次回はハイライトを入れてみたいです", isClient: true, time: "5/20 10:00" },
@@ -91,7 +94,6 @@ const STATUS_LABEL: Record<string, string> = {
   confirmed: "予約済", checked_in: "来店", in_progress: "施術中", done: "会計済",
   cancelled: "キャンセル", rejected: "却下", draft: "下書き", requested: "リクエスト", pending: "保留中",
 };
-
 const STATUS_CLASS: Record<string, string> = {
   confirmed: "bg-blue-50 text-blue-700",
   checked_in: "bg-yellow-50 text-yellow-700",
@@ -100,12 +102,91 @@ const STATUS_CLASS: Record<string, string> = {
   cancelled: "bg-red-50 text-red-400",
 };
 
-// ---- コンポーネント ----
+// ---- 施術追加フォーム ----
 
-function VisitNotePanel({ note }: { note: VisitNote }) {
+type AddMenuFormProps = {
+  onAdd: (item: MenuItem) => void;
+  onCancel: () => void;
+};
+
+function AddMenuForm({ onAdd, onCancel }: AddMenuFormProps) {
+  const [name, setName] = useState("");
+  const [staff, setStaff] = useState(MOCK_STAFF_LIST[0]);
+  const [price, setPrice] = useState("");
+
+  function handleSubmit() {
+    const p = parseInt(price.replace(/,/g, ""), 10);
+    if (!name.trim() || isNaN(p) || p < 0) return;
+    onAdd({ name: name.trim(), staff, price: p });
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm">
+      <div className="flex flex-col gap-2">
+        <input
+          autoFocus
+          type="text"
+          placeholder="メニュー名"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+        <div className="flex gap-2">
+          <select
+            value={staff}
+            onChange={(e) => setStaff(e.target.value)}
+            className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          >
+            {MOCK_STAFF_LIST.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            placeholder="金額（税込）"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="w-36 rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!name.trim() || !price}
+            className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+          >
+            追加
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- 来店 note パネル ----
+
+type VisitNotePanelProps = {
+  note: VisitNote;
+  onAddMenu: (item: MenuItem) => void;
+};
+
+function VisitNotePanel({ note, onAddMenu }: VisitNotePanelProps) {
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const subtotal = note.menus.reduce((s, m) => s + m.price, 0)
+    + note.discounts.reduce((s, d) => s + d.price, 0);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* ヘッダ情報 */}
+      {/* ヘッダ */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-500">{note.date}</p>
@@ -118,13 +199,27 @@ function VisitNotePanel({ note }: { note: VisitNote }) {
 
       {/* 施術明細 */}
       <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">施術</h4>
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-400">施術</h4>
+          {note.status !== "done" && !showAddForm && (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-0.5 text-xs text-indigo-600 hover:text-indigo-800"
+            >
+              <Plus size={12} />
+              追加
+            </button>
+          )}
+        </div>
+
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
           {note.menus.map((m, i) => (
             <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
               <div>
                 <p className="font-medium text-gray-800">{m.name}</p>
-                <p className="text-xs text-gray-400">{m.staff}{m.startTime && ` / ${m.startTime}〜${m.endTime}`}</p>
+                <p className="text-xs text-gray-400">
+                  {m.staff}{m.startTime && ` / ${m.startTime}〜${m.endTime}`}
+                </p>
               </div>
               <span className="font-mono text-gray-700">¥{m.price.toLocaleString()}</span>
             </div>
@@ -136,6 +231,15 @@ function VisitNotePanel({ note }: { note: VisitNote }) {
             </div>
           ))}
         </div>
+
+        {showAddForm && (
+          <div className="mt-2">
+            <AddMenuForm
+              onAdd={(item) => { onAddMenu(item); setShowAddForm(false); }}
+              onCancel={() => setShowAddForm(false)}
+            />
+          </div>
+        )}
       </div>
 
       {/* 写真 */}
@@ -159,7 +263,7 @@ function VisitNotePanel({ note }: { note: VisitNote }) {
       <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
         <div>
           <p className="text-xs text-gray-400">合計（税込）</p>
-          <p className="text-xl font-bold text-gray-900">¥{note.total.toLocaleString()}</p>
+          <p className="text-xl font-bold text-gray-900">¥{subtotal.toLocaleString()}</p>
         </div>
         {note.status !== "done" && (
           <button className="flex items-center gap-1 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
@@ -172,20 +276,50 @@ function VisitNotePanel({ note }: { note: VisitNote }) {
   );
 }
 
-export default function BeNotePage() {
-  const [selectedVisitId, setSelectedVisitId] = useState(MOCK_VISITS[0].id);
-  const [dmText, setDmText] = useState("");
-  const [messages, setMessages] = useState(MOCK_DM);
+// ---- メインページ ----
 
-  const selectedVisit = MOCK_VISITS.find((v) => v.id === selectedVisitId) ?? MOCK_VISITS[0];
+export default function BeNotePage() {
+  const [visits, setVisits] = useState(INITIAL_VISITS);
+  const [selectedVisitId, setSelectedVisitId] = useState(INITIAL_VISITS[0].id);
+  const [dmText, setDmText] = useState("");
+  const [messages, setMessages] = useState(INITIAL_DM);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedVisit = visits.find((v) => v.id === selectedVisitId) ?? visits[0];
+
+  function handleAddMenu(item: MenuItem) {
+    setVisits((prev) =>
+      prev.map((v) =>
+        v.id === selectedVisitId
+          ? { ...v, menus: [...v.menus, item], total: v.total + item.price }
+          : v
+      )
+    );
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPendingImage(url);
+    e.target.value = "";
+  }
 
   function sendMessage() {
-    if (!dmText.trim()) return;
+    if (!dmText.trim() && !pendingImage) return;
     setMessages((prev) => [
       ...prev,
-      { id: `m${Date.now()}`, text: dmText.trim(), isClient: false, time: "今" },
+      {
+        id: `m${Date.now()}`,
+        text: dmText.trim() || undefined,
+        imageUrl: pendingImage ?? undefined,
+        isClient: false,
+        time: "今",
+      },
     ]);
     setDmText("");
+    setPendingImage(null);
   }
 
   return (
@@ -216,17 +350,14 @@ export default function BeNotePage() {
 
         {/* note + History 2カラム */}
         <div className="grid grid-cols-3 gap-4">
-          {/* 来店 note（左2/3） */}
           <div className="col-span-2 rounded-xl border border-gray-200 bg-white p-5">
             <h3 className="mb-4 text-sm font-semibold text-gray-700">来店 note</h3>
-            <VisitNotePanel note={selectedVisit} />
+            <VisitNotePanel note={selectedVisit} onAddMenu={handleAddMenu} />
           </div>
-
-          {/* History_note（右1/3） */}
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <h3 className="mb-3 text-sm font-semibold text-gray-700">History</h3>
             <div className="flex flex-col gap-2">
-              {MOCK_VISITS.map((v) => (
+              {visits.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => setSelectedVisitId(v.id)}
@@ -249,21 +380,58 @@ export default function BeNotePage() {
         {/* DM エリア */}
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <h3 className="mb-3 text-sm font-semibold text-gray-700">DM（交換ノート）</h3>
-          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-3">
+
+          {/* メッセージ一覧 */}
+          <div className="mb-3 flex max-h-56 flex-col gap-2 overflow-y-auto">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.isClient ? "justify-start" : "justify-end"}`}>
                 <div className={`max-w-xs rounded-xl px-3 py-2 text-sm ${
-                  m.isClient
-                    ? "bg-gray-100 text-gray-800"
-                    : "bg-indigo-600 text-white"
+                  m.isClient ? "bg-gray-100 text-gray-800" : "bg-indigo-600 text-white"
                 }`}>
-                  <p>{m.text}</p>
-                  <p className={`mt-0.5 text-xs ${m.isClient ? "text-gray-400" : "text-indigo-200"}`}>{m.time}</p>
+                  {m.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.imageUrl} alt="添付画像" className="mb-1 max-w-full rounded-lg" />
+                  )}
+                  {m.text && <p>{m.text}</p>}
+                  <p className={`mt-0.5 text-xs ${m.isClient ? "text-gray-400" : "text-indigo-200"}`}>
+                    {m.time}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
+
+          {/* 画像プレビュー */}
+          {pendingImage && (
+            <div className="relative mb-2 inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pendingImage} alt="添付プレビュー" className="h-20 rounded-lg border border-gray-200 object-cover" />
+              <button
+                onClick={() => setPendingImage(null)}
+                className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-gray-600 text-white hover:bg-gray-800"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          )}
+
+          {/* 入力フォーム */}
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center rounded-lg border border-gray-300 px-3 py-2 text-gray-500 hover:bg-gray-50"
+              title="画像を添付"
+            >
+              <Paperclip size={16} />
+            </button>
             <input
               type="text"
               value={dmText}
@@ -274,7 +442,8 @@ export default function BeNotePage() {
             />
             <button
               onClick={sendMessage}
-              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              disabled={!dmText.trim() && !pendingImage}
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
             >
               <Send size={14} />
               送信
