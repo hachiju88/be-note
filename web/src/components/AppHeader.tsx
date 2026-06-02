@@ -18,9 +18,15 @@ export default function AppHeader({ title, navLinks = [], email, role }: Props) 
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
+    const tick = () => setNow(new Date());
+    // 初回はマウント直後の同期 setState を避け、タイマーコールバック経由で設定する
+    // （react-hooks/set-state-in-effect 回避＋カスケードレンダー抑制。SSR では時刻非表示）。
+    const initial = setTimeout(tick, 0);
+    const id = setInterval(tick, 60_000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(id);
+    };
   }, []);
 
   const formatted = now
