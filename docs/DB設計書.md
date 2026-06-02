@@ -479,3 +479,46 @@ CREATE INDEX idx_material_tx_material
 | `t_reservation` | `idx_reservation_status` | `(status, reservation_start)` | 予約受付画面・日報集計 |
 | `t_shift` | `idx_shift_staff_date` | `(staff_id, shift_date)` WHERE `delete_flg=false` | 空き時間算出（非一意。分割シフト可） |
 | `t_material_transaction` | `idx_material_tx_material` | `(material_id, transaction_datetime)` | 入出庫履歴・在庫算出 |
+
+---
+
+## 行レベルセキュリティ（RLS）
+
+行レベルセキュリティ（Row Level Security）は、「どの行を誰が読み書きできるか」を
+PostgreSQL（Supabase）自身に強制させる仕組み。アプリ層のチェック漏れに対する**多層防御**として導入する。
+マイグレーション `20260601120007_07_rls.sql` で定義。
+
+### 方針
+
+- **データアクセスの正面は `/api/v1`**。顧客向けの項目マスク（`start_time`/`end_time` 等の除外）は
+  サーバ側で行う（API設計書「認証」）。顧客（customer）のデータ取得は必ず API を経由する。
+- **RLS は deny-by-default の保険**。全 `public` テーブルで RLS を有効化し、ポリシーの無いアクセスは拒否する。
+- **API（`service_role`）は RLS をバイパス**して全行を操作できる（Supabase の `service_role` は `BYPASSRLS`）。
+  正面の認可・項目マスクは API 層が担う。
+- **web 管理ツール（staff/admin）が supabase-js で直接 DB を読む場合に備え、`authenticated` ロールに
+  staff/admin 向けの読み書きポリシーを付与**する。
+- **顧客（customer）の直接 DB アクセスは閉じる**（直アクセス用ポリシーを作らない＝deny-by-default）。
+  顧客は API 経由に限定し、項目マスクを必ず通す。
+
+### 認可の判定
+
+`auth.uid()`（JWT の `sub` = `auth.users.id`）を `t_staff.user_id` と突合して判定する。
+再帰を避けるため `SECURITY DEFINER` 関数で実装する。
+
+| 関数 | 真になる条件 |
+|---|---|
+| `public.is_staff()` | `t_staff` に `user_id = auth.uid()` かつ `delete_flg = false` の行が存在 |
+| `public.is_admin()` | 上記に加え `is_admin = true` |
+
+### テーブル別ポリシー（`authenticated` ロール）
+
+| 区分 | 対象テーブル | SELECT | INSERT/UPDATE/DELETE |
+|---|---|---|---|
+| 固定語彙 | `t_note_type` | 全 `authenticated` 可 | 不可（マイグレーションで投入） |
+| マスタ・設定 | `t_salon_group` / `t_salon` / `t_staff` / `t_menu_master` / `t_task` / `t_staff_skill` / `t_business_hour` / `t_holiday` / `t_reservation_slot` / `t_shift` | staff | admin |
+| 材料（管理者画面） | `t_material` / `t_material_transaction` | admin | admin |
+| 業務データ | `t_client` / `t_client_salon` / `t_be_note` / `t_reservation` / `t_menu` / `t_sold_item` / `t_discount` / `t_photo` | staff | staff |
+
+- `customer` は上記いずれにもマッチせず、直接アクセスは拒否される（API 経由のみ）。
+- `anon`（未ログイン）も全拒否。
+- マイグレーション・seed は所有者（`postgres`）が実行するため RLS の影響を受けない。
