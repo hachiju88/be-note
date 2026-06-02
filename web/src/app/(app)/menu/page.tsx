@@ -8,6 +8,7 @@ import {
   Settings,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
+import { getAuthContext } from "@/lib/auth";
 
 const STAFF_MENUS = [
   {
@@ -51,9 +52,6 @@ const ADMIN_MENUS = [
   },
 ];
 
-// モックアップ: 実装フェーズで認証セッションから取得する
-const MOCK_IS_ADMIN = true;
-
 type MenuItem = {
   href: string;
   label: string;
@@ -78,7 +76,11 @@ function MenuCard({ href, label, description, Icon }: MenuItem) {
   );
 }
 
-export default function MenuPage() {
+export default async function MenuPage() {
+  // (app)/layout の requireStaff を通過済み。ロールで管理者メニューを出し分ける。
+  const ctx = await getAuthContext();
+  const isAdmin = ctx?.role === "admin";
+
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader title="メニュー" />
@@ -95,7 +97,7 @@ export default function MenuPage() {
           </div>
         </section>
 
-        {MOCK_IS_ADMIN && (
+        {isAdmin && (
           <section className="mt-10">
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-400">
               管理者メニュー

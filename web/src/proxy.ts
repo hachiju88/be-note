@@ -66,8 +66,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 静的アセット・画像最適化・favicon を除く全ルートに適用。
+  // 静的アセット・画像最適化・favicon、および /api/v1（Bearer JWT 認証）を除く
+  // 全ルートに適用。API は Cookie ではなく Authorization ヘッダで認証するため
+  // proxy のリダイレクト対象から外す（未認証時に /login へHTMLリダイレクトしない）。
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
