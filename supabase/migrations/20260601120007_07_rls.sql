@@ -65,15 +65,22 @@ declare
   claims     jsonb   := coalesce(event -> 'claims', '{}'::jsonb);
   app_meta   jsonb;
 begin
-  v_is_staff := exists (
-    select 1 from t_staff where user_id = v_uid and delete_flg = false
-  );
-  v_is_admin := exists (
-    select 1 from t_staff
-    where user_id = v_uid and delete_flg = false and is_admin = true
-  );
+  -- user_id は UNIQUE のため、1 回のインデックス探索で staff/admin を同時に判定。
+  -- 行が無ければ INTO 先は NULL のままなので false に倒す（= 非 staff）。
+  select true, is_admin
+    into v_is_staff, v_is_admin
+    from t_staff
+    where user_id = v_uid and delete_flg = false;
+  v_is_staff := coalesce(v_is_staff, false);
+  v_is_admin := coalesce(v_is_admin, false);
 
-  app_meta := coalesce(claims -> 'app_metadata', '{}'::jsonb)
+  -- app_metadata が object でない（欠落 / JSON null）場合は空オブジェクト扱いにして
+  -- '||' の不正連結エラーを避ける（フック失敗はログイン/トークン更新を止めるため防御的に）。
+  app_meta := (case
+                 when jsonb_typeof(claims -> 'app_metadata') = 'object'
+                   then claims -> 'app_metadata'
+                 else '{}'::jsonb
+               end)
               || jsonb_build_object('is_staff', v_is_staff, 'is_admin', v_is_admin);
   claims := jsonb_set(claims, '{app_metadata}', app_meta);
 
