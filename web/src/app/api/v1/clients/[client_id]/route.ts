@@ -3,9 +3,12 @@ import { ok } from "@/lib/api/response";
 import { ApiError } from "@/lib/api/errors";
 import { calcAge } from "@/lib/api/age";
 import {
+  assertUuid,
+  optionalDateString,
   optionalString,
   parseJsonObject,
   requireSex,
+  requireString,
 } from "@/lib/api/validate";
 
 type Params = { client_id: string };
@@ -16,6 +19,8 @@ type Params = { client_id: string };
  */
 export const GET = apiRoute<Params>(
   async ({ auth, svc, params }) => {
+    assertUuid(params.client_id, "client_id");
+
     const { data: client, error } = await svc
       .from("t_client")
       .select(
@@ -77,24 +82,15 @@ export const GET = apiRoute<Params>(
   { roles: ["staff", "admin"] },
 );
 
-const CLIENT_TEXT_FIELDS = [
-  "client_name",
-  "client_kana",
-  "birthday",
-  "postcode",
-  "address",
-  "phone_number",
-  "hair_type",
-  "occupation",
-  "allergy",
-] as const;
-
 /**
  * PUT /api/v1/clients/{client_id} — 顧客情報更新（staff / admin）。
- * 送信されたフィールドのみ更新する。memo はサロン別情報として t_client_salon を upsert。
+ * 送信されたフィールドのみ更新する。各フィールドは DB 制約に合わせて個別に検証し、
+ * NOT NULL のフィールド（client_name / client_kana）に空値が来た場合も 400 で弾く。
+ * memo はサロン別情報として t_client_salon を upsert。
  */
 export const PUT = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
+    assertUuid(params.client_id, "client_id");
     const body = await parseJsonObject(req);
 
     const { data: existing, error: findError } = await svc
@@ -107,10 +103,25 @@ export const PUT = apiRoute<Params>(
     if (!existing) throw new ApiError("NOT_FOUND", "顧客が見つかりません。");
 
     const patch: Record<string, unknown> = {};
-    for (const field of CLIENT_TEXT_FIELDS) {
-      if (field in body) patch[field] = optionalString(body[field], field);
-    }
+    if ("client_name" in body)
+      patch.client_name = requireString(body.client_name, "client_name", 20);
+    if ("client_kana" in body)
+      patch.client_kana = requireString(body.client_kana, "client_kana", 20);
     if ("sex" in body) patch.sex = requireSex(body.sex);
+    if ("birthday" in body)
+      patch.birthday = optionalDateString(body.birthday, "birthday");
+    if ("postcode" in body)
+      patch.postcode = optionalString(body.postcode, "postcode", 10);
+    if ("address" in body)
+      patch.address = optionalString(body.address, "address", 100);
+    if ("phone_number" in body)
+      patch.phone_number = optionalString(body.phone_number, "phone_number", 20);
+    if ("hair_type" in body)
+      patch.hair_type = optionalString(body.hair_type, "hair_type", 30);
+    if ("allergy" in body)
+      patch.allergy = optionalString(body.allergy, "allergy", 30);
+    if ("occupation" in body)
+      patch.occupation = optionalString(body.occupation, "occupation", 20);
 
     if (Object.keys(patch).length > 0) {
       const { error } = await svc
@@ -121,17 +132,17 @@ export const PUT = apiRoute<Params>(
     }
 
     // memo はサロン別。送信時のみ t_client_salon を upsert（無ければ作成）。
+    // 過去に論理削除されていた場合に備え delete_flg=false を明示し、確実に復元する。
     if ("memo" in body && auth.salonId) {
-      const { error } = await svc
-        .from("t_client_salon")
-        .upsert(
-          {
-            client_id: params.client_id,
-            salon_id: auth.salonId,
-            memo: optionalString(body.memo, "memo"),
-          },
-          { onConflict: "client_id,salon_id" },
-        );
+      const { error } = await svc.from("t_client_salon").upsert(
+        {
+          client_id: params.client_id,
+          salon_id: auth.salonId,
+          memo: optionalString(body.memo, "memo", 300),
+          delete_flg: false,
+        },
+        { onConflict: "client_id,salon_id" },
+      );
       if (error) {
         throw new ApiError("INTERNAL_ERROR", "顧客サロン情報の更新に失敗しました。");
       }
