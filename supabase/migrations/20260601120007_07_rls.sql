@@ -69,7 +69,7 @@ begin
   -- 行が無ければ INTO 先は NULL のままなので false に倒す（= 非 staff）。
   select true, is_admin
     into v_is_staff, v_is_admin
-    from t_staff
+    from public.t_staff
     where user_id = v_uid and delete_flg = false;
   v_is_staff := coalesce(v_is_staff, false);
   v_is_admin := coalesce(v_is_admin, false);
