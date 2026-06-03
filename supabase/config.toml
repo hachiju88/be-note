@@ -48,6 +48,15 @@ enable_signup = true
 enable_signup = true
 enable_confirmations = false
 
+# --- カスタムアクセストークンフック --------------------------------
+# トークン発行/更新時に public.custom_access_token_hook を呼び、
+# t_staff から is_staff / is_admin を app_metadata クレームに載せる。
+# これにより RLS（is_staff()/is_admin()）は t_staff を引かず JWT だけで判定する。
+# 定義は supabase/migrations/20260601120007_07_rls.sql。
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
+
 # --- フェーズ1のソーシャルログイン ---------------------------------
 # クレデンシャルは env 参照（env(NAME)）。実値は web/.env.local 等に置き、
 # config.toml にはハードコードしないこと。

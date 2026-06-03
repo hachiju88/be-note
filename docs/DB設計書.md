@@ -502,13 +502,22 @@ PostgreSQL（Supabase）自身に強制させる仕組み。アプリ層のチ�
 
 ### 認可の判定
 
-`auth.uid()`（JWT の `sub` = `auth.users.id`）を `t_staff.user_id` と突合して判定する。
-再帰を避けるため `SECURITY DEFINER` 関数で実装する。
+ロール判定は **JWT クレーム（`app_metadata.is_staff` / `app_metadata.is_admin`）** を読むだけで行い、
+RLS 評価時に `t_staff` を引かない（行ごとの問い合わせを排除し、ポリシーへインライン展開させる）。
 
 | 関数 | 真になる条件 |
 |---|---|
-| `public.is_staff()` | `t_staff` に `user_id = auth.uid()` かつ `delete_flg = false` の行が存在 |
-| `public.is_admin()` | 上記に加え `is_admin = true` |
+| `public.is_staff()` | `(auth.jwt()->'app_metadata'->>'is_staff')::boolean` が真（未設定時は false） |
+| `public.is_admin()` | `(auth.jwt()->'app_metadata'->>'is_admin')::boolean` が真（未設定時は false） |
+
+クレームは **カスタムアクセストークンフック** `public.custom_access_token_hook(event jsonb)` が
+トークン発行/更新時に埋める。フックは `auth.uid()` 相当（`event.user_id`）で `t_staff` を 1 回引き、
+`user_id = ... AND delete_flg = false` の存在で `is_staff`、加えて `is_admin = true` で `is_admin` を判定する。
+`SECURITY DEFINER`（所有者 `postgres`）で `t_staff` の RLS をバイパスして参照し、実行は `supabase_auth_admin` に限定する。
+有効化は `supabase/config.toml` の `[auth.hook.custom_access_token]`。
+
+> ⚠️ クレームはトークン発行/更新時にのみ反映される。`is_admin` 等の変更は次回更新
+> （`jwt_expiry` ごと、または再ログイン）まで JWT に反映されない（許容済みのトレードオフ）。
 
 ### テーブル別ポリシー（`authenticated` ロール）
 

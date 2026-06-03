@@ -15,32 +15,25 @@
 --    将来のテーブルは自動では保護されない（RLS 無効・GRANT 無しのまま取り残される）。
 -- =============================================================
 
--- 1. 認可判定ヘルパー（SECURITY DEFINER で RLS をバイパスし再帰を防ぐ）------
--- auth.uid() は Supabase が提供（JWT の sub = auth.users.id）。
+-- 1. 認可判定ヘルパー -------------------------------------------------
+-- ロール判定は JWT クレーム（app_metadata.is_staff / is_admin）を読むだけにし、
+-- RLS 評価時の t_staff 問い合わせを無くす（行ごとの N+1 を排除し、インライン化も可能）。
+-- クレームはカスタムアクセストークンフック（下記 1-2）がトークン発行時に埋める。
+-- auth.jwt() は Supabase 提供。クレーム未設定時は false（deny-by-default）。
 create or replace function public.is_staff()
   returns boolean
   language sql
   stable
-  security definer
-  set search_path = public
 as $$
-  select exists (
-    select 1 from t_staff
-    where user_id = auth.uid() and delete_flg = false
-  );
+  select coalesce((auth.jwt() -> 'app_metadata' ->> 'is_staff')::boolean, false);
 $$;
 
 create or replace function public.is_admin()
   returns boolean
   language sql
   stable
-  security definer
-  set search_path = public
 as $$
-  select exists (
-    select 1 from t_staff
-    where user_id = auth.uid() and delete_flg = false and is_admin = true
-  );
+  select coalesce((auth.jwt() -> 'app_metadata' ->> 'is_admin')::boolean, false);
 $$;
 
 -- 実行権限は authenticated のみに付与（anon は述語を満たさず呼ぶ必要がないため最小権限）。
@@ -49,6 +42,63 @@ revoke execute on function public.is_staff() from public;
 revoke execute on function public.is_admin() from public;
 grant execute on function public.is_staff()  to authenticated;
 grant execute on function public.is_admin()  to authenticated;
+
+-- 1-2. カスタムアクセストークンフック --------------------------------
+-- トークン発行/更新時に Supabase Auth（supabase_auth_admin ロール）が呼び出す。
+-- t_staff を 1 回引いて is_staff / is_admin を app_metadata クレームに載せる。
+-- これにより RLS 側（is_staff()/is_admin()）は JWT を読むだけで判定できる。
+-- SECURITY DEFINER（所有者 postgres）で t_staff の RLS をバイパスして参照する。
+-- 有効化は supabase/config.toml の [auth.hook.custom_access_token]。
+-- ⚠️ クレーム反映はトークン発行/更新時のみ。is_admin 等の変更は次回更新
+--    （jwt_expiry ごと/再ログイン）まで JWT に反映されない（許容済みのトレードオフ）。
+create or replace function public.custom_access_token_hook(event jsonb)
+  returns jsonb
+  language plpgsql
+  stable
+  security definer
+  set search_path = public
+as $$
+declare
+  v_uid      uuid    := (event ->> 'user_id')::uuid;
+  v_is_staff boolean;
+  v_is_admin boolean;
+  claims     jsonb   := coalesce(event -> 'claims', '{}'::jsonb);
+  app_meta   jsonb;
+begin
+  -- user_id は UNIQUE のため、1 回のインデックス探索で staff/admin を同時に判定。
+  -- 行が無ければ INTO 先は NULL のままなので false に倒す（= 非 staff）。
+  select true, is_admin
+    into v_is_staff, v_is_admin
+    from public.t_staff
+    where user_id = v_uid and delete_flg = false;
+  v_is_staff := coalesce(v_is_staff, false);
+  v_is_admin := coalesce(v_is_admin, false);
+
+  -- app_metadata が object でない（欠落 / JSON null）場合は空オブジェクト扱いにして
+  -- '||' の不正連結エラーを避ける（フック失敗はログイン/トークン更新を止めるため防御的に）。
+  app_meta := (case
+                 when jsonb_typeof(claims -> 'app_metadata') = 'object'
+                   then claims -> 'app_metadata'
+                 else '{}'::jsonb
+               end)
+              || jsonb_build_object('is_staff', v_is_staff, 'is_admin', v_is_admin);
+  claims := jsonb_set(claims, '{app_metadata}', app_meta);
+
+  return jsonb_set(event, '{claims}', claims);
+end;
+$$;
+
+-- フックは supabase_auth_admin のみが実行する。一般ロールからは実行不可にする。
+revoke execute on function public.custom_access_token_hook(jsonb) from public, anon, authenticated;
+do $$
+begin
+  -- supabase_auth_admin は Supabase 環境のみに存在（プレーン PG 検証環境では未作成）。
+  if exists (select 1 from pg_roles where rolname = 'supabase_auth_admin') then
+    grant usage on schema public to supabase_auth_admin;
+    grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
+  end if;
+end;
+$$;
 
 -- 2. テーブル権限（GRANT）。実際の行制御は RLS が担う。-----------------
 -- service_role は BYPASSRLS のため、RLS 有効でも全行を操作できる。
@@ -79,13 +129,11 @@ $$;
 create policy p_note_type_select on public.t_note_type
   for select to authenticated using (true);
 
--- ⚡ 性能: ポリシー内の判定関数はスカラサブクエリ `(select ...)` で包む。
---    is_staff()/is_admin() は STABLE だが SECURITY DEFINER のためインライン化されず、
---    素で書くと行ごとに評価され t_staff を引く（RLS の N+1）。サブクエリ化で
---    クエリ当たり1回（InitPlan）に固定できる（Supabase 推奨の RLS 最適化）。
---    t_staff.user_id は UNIQUE 索引付きのため実質1回のインデックス探索で済む。
---    TODO(M1): 認証フックで JWT(app_metadata)に is_staff/is_admin を載せ、
---              `(auth.jwt()->'app_metadata'->>'is_staff')::boolean` 判定に切替えれば DB 問い合わせ自体を無くせる。
+-- ⚡ 性能: is_staff()/is_admin() は JWT クレーム（app_metadata）を読むだけの
+--    純粋な STABLE 関数で、RLS 評価時に t_staff を引かない（行ごとの N+1 無し）。
+--    SQL 関数のためポリシーへインライン展開され、実質 `(auth.jwt()->...)::boolean`
+--    のスカラ評価になる。よってスカラサブクエリ `(select ...)` の包みは不要。
+--    クレームはカスタムアクセストークンフック（上記 1-2）が発行時に埋める。
 
 -- 4-2. 一括ポリシー生成 ------------------------------------------------
 do $$
@@ -101,17 +149,17 @@ begin
   -- マスタ・設定
   foreach tbl in array master_tables loop
     execute format(
-      'create policy p_select on public.%I for select to authenticated using ((select public.is_staff()));', tbl);
+      'create policy p_select on public.%I for select to authenticated using (public.is_staff());', tbl);
     execute format(
-      'create policy p_modify on public.%I for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));', tbl);
+      'create policy p_modify on public.%I for all to authenticated using (public.is_admin()) with check (public.is_admin());', tbl);
   end loop;
 
   -- 全操作ポリシー（材料=admin / 業務データ=staff）を (判定式, テーブル群) で一括生成
   for spec in
-    select '(select public.is_admin())' as fn,
+    select 'public.is_admin()' as fn,
            array['t_material','t_material_transaction'] as tables
     union all
-    select '(select public.is_staff())' as fn,
+    select 'public.is_staff()' as fn,
            array['t_client','t_client_salon','t_be_note','t_reservation',
                  't_menu','t_sold_item','t_discount','t_photo'] as tables
   loop
