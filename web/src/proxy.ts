@@ -69,7 +69,9 @@ export const config = {
   // 静的アセット・画像最適化・favicon、および /api/v1（Bearer JWT 認証）を除く
   // 全ルートに適用。API は Cookie ではなく Authorization ヘッダで認証するため
   // proxy のリダイレクト対象から外す（未認証時に /login へHTMLリダイレクトしない）。
+  // `api(?:/|$)` でパス境界を明示し、/api・/api/... のみを除外する
+  // （`api` 単体だと /api-docs など api で始まる別パスも巻き込むため）。
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api(?:/|$)|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
