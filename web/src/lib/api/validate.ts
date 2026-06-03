@@ -1,0 +1,104 @@
+import { ApiError } from "./errors";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** リクエストボディを JSON オブジェクトとして取り出す。不正なら INVALID_PARAMS。 */
+export async function parseJsonObject(
+  req: Request,
+): Promise<Record<string, unknown>> {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    throw new ApiError("INVALID_PARAMS", "リクエストボディの JSON が不正です。");
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      "リクエストボディはオブジェクトで指定してください。",
+    );
+  }
+  return raw as Record<string, unknown>;
+}
+
+/** 必須文字列（空文字不可、前後空白は除去、任意で最大文字数チェック）。 */
+export function requireString(
+  v: unknown,
+  field: string,
+  maxLength?: number,
+): string {
+  if (typeof v !== "string" || v.trim() === "") {
+    throw new ApiError("INVALID_PARAMS", `${field} は必須です。`);
+  }
+  const s = v.trim();
+  if (maxLength !== undefined && s.length > maxLength) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${maxLength} 文字以内で指定してください。`,
+    );
+  }
+  return s;
+}
+
+/** 任意文字列（未指定/null は null、前後空白は除去、任意で最大文字数チェック）。 */
+export function optionalString(
+  v: unknown,
+  field: string,
+  maxLength?: number,
+): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string") {
+    throw new ApiError("INVALID_PARAMS", `${field} は文字列で指定してください。`);
+  }
+  const s = v.trim();
+  if (maxLength !== undefined && s.length > maxLength) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${maxLength} 文字以内で指定してください。`,
+    );
+  }
+  return s;
+}
+
+/** 任意の日付文字列（YYYY-MM-DD・実在日）。DB の date 型違反による 500 を防ぐ。 */
+export function optionalDateString(v: unknown, field: string): string | null {
+  const val = optionalString(v, field);
+  if (!val) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は YYYY-MM-DD 形式で指定してください。`,
+    );
+  }
+  // 実在日チェック（例: 2026-02-31 を弾く）。
+  const [y, m, d] = val.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== m - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    throw new ApiError("INVALID_PARAMS", `${field} に有効な日付を指定してください。`);
+  }
+  return val;
+}
+
+/** 性別（1=男性 / 2=女性）。t_client.check_client_sex に対応。 */
+export function requireSex(v: unknown): 1 | 2 {
+  if (v !== 1 && v !== 2) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      "sex は 1(男性) または 2(女性) で指定してください。",
+    );
+  }
+  return v;
+}
+
+/** パスパラメータ等の UUID 形式チェック（非 UUID で DB クエリ 500 になるのを防ぐ）。 */
+export function assertUuid(v: string, field: string): string {
+  if (!UUID_RE.test(v)) {
+    throw new ApiError("INVALID_PARAMS", `${field} の形式が不正です。`);
+  }
+  return v;
+}
