@@ -41,6 +41,9 @@ export const POST = apiRoute(
     }
 
     // memo はサロン別情報。リクエスト元スタッフのサロンに t_client_salon を作成する。
+    // 2 テーブルへの書き込みは非トランザクション（supabase-js の制約）。失敗時は
+    // 直前に作成した t_client を補償削除して孤立行を防ぐ（簡易的な原子性代替。
+    // 厳密な原子性は冪等基盤＋トランザクション RPC 導入時に対応）。
     const memo = optionalString(body.memo, "memo", 300);
     if (auth.salonId) {
       const { error: csError } = await svc
@@ -51,6 +54,7 @@ export const POST = apiRoute(
           memo,
         });
       if (csError) {
+        await svc.from("t_client").delete().eq("client_id", created.client_id);
         throw new ApiError("INTERNAL_ERROR", "顧客サロン情報の作成に失敗しました。");
       }
     }

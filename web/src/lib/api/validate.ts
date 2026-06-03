@@ -22,7 +22,7 @@ export async function parseJsonObject(
   return raw as Record<string, unknown>;
 }
 
-/** 必須文字列（空文字不可、任意で最大文字数チェック）。 */
+/** 必須文字列（空文字不可、前後空白は除去、任意で最大文字数チェック）。 */
 export function requireString(
   v: unknown,
   field: string,
@@ -31,16 +31,17 @@ export function requireString(
   if (typeof v !== "string" || v.trim() === "") {
     throw new ApiError("INVALID_PARAMS", `${field} は必須です。`);
   }
-  if (maxLength !== undefined && v.length > maxLength) {
+  const s = v.trim();
+  if (maxLength !== undefined && s.length > maxLength) {
     throw new ApiError(
       "INVALID_PARAMS",
       `${field} は ${maxLength} 文字以内で指定してください。`,
     );
   }
-  return v;
+  return s;
 }
 
-/** 任意文字列（未指定/null は null、任意で最大文字数チェック）。 */
+/** 任意文字列（未指定/null は null、前後空白は除去、任意で最大文字数チェック）。 */
 export function optionalString(
   v: unknown,
   field: string,
@@ -50,13 +51,14 @@ export function optionalString(
   if (typeof v !== "string") {
     throw new ApiError("INVALID_PARAMS", `${field} は文字列で指定してください。`);
   }
-  if (maxLength !== undefined && v.length > maxLength) {
+  const s = v.trim();
+  if (maxLength !== undefined && s.length > maxLength) {
     throw new ApiError(
       "INVALID_PARAMS",
       `${field} は ${maxLength} 文字以内で指定してください。`,
     );
   }
-  return v;
+  return s;
 }
 
 /** 任意の日付文字列（YYYY-MM-DD・実在日）。DB の date 型違反による 500 を防ぐ。 */
