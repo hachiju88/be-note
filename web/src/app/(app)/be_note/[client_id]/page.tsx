@@ -282,9 +282,12 @@ export default function BeNotePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ref でレンダーごとに最新値を保持し、アンマウント時に未送信の objectURL を解放する
-  // （useEffect の [] 依存ではクロージャが古くなるため ref パターンを使用）
+  // （useEffect の [] 依存ではクロージャが古くなるため ref パターンを使用）。
+  // ref への書き込みはレンダー中ではなくエフェクトで行う（refs-during-render 回避）。
   const pendingImageRef = useRef<string | null>(null);
-  pendingImageRef.current = pendingImage;
+  useEffect(() => {
+    pendingImageRef.current = pendingImage;
+  }, [pendingImage]);
   useEffect(() => {
     return () => {
       if (pendingImageRef.current) URL.revokeObjectURL(pendingImageRef.current);

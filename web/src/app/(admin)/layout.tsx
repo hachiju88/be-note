@@ -1,17 +1,24 @@
 import { requireAdmin } from "@/lib/auth";
+import { SessionProvider } from "@/components/SessionProvider";
 
 /**
  * (admin) グループ: admin 専用レイアウト。
  * requireAdmin() で admin（t_staff.is_admin = true）を強制する。
  * admin 以外は /menu へ退避する。
- * ヘッダーは各画面の AppHeader コンポーネントで持つ（画面名・ナビが異なるため）。
+ * 取得したセッション情報を SessionProvider で配下に渡す。
  */
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  await requireAdmin();
+  const ctx = await requireAdmin();
 
-  return <div className="flex min-h-screen flex-col bg-gray-50">{children}</div>;
+  return (
+    <SessionProvider
+      value={{ staffName: ctx.staffName, email: ctx.email, role: ctx.role }}
+    >
+      <div className="flex min-h-screen flex-col bg-gray-50">{children}</div>
+    </SessionProvider>
+  );
 }

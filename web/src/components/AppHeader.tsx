@@ -2,21 +2,31 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSession } from "@/components/SessionProvider";
 
 type Props = {
   title: string;
   navLinks?: { label: string; href: string }[];
+  /** 通常は SessionProvider から取得するため未指定でよい（明示時は上書き）。 */
   email?: string | null;
   role?: string;
 };
 
 export default function AppHeader({ title, navLinks = [], email, role }: Props) {
+  // ログイン中スタッフの実情報（layout の SessionProvider 由来）。props があれば優先。
+  const session = useSession();
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
+    const tick = () => setNow(new Date());
+    // 初回はマウント直後の同期 setState を避け、タイマーコールバック経由で設定する
+    // （react-hooks/set-state-in-effect 回避＋カスケードレンダー抑制。SSR では時刻非表示）。
+    const initial = setTimeout(tick, 0);
+    const id = setInterval(tick, 60_000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(id);
+    };
   }, []);
 
   const formatted = now
@@ -30,8 +40,9 @@ export default function AppHeader({ title, navLinks = [], email, role }: Props) 
       })
     : "";
 
-  const displayName = email ?? "田中 太郎";
-  const displayRole = role ?? "staff";
+  const displayName =
+    email ?? session?.staffName ?? session?.email ?? "ゲスト";
+  const displayRole = role ?? session?.role ?? "staff";
   const initial = displayName.charAt(0);
 
   return (

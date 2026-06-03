@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -15,6 +16,8 @@ export type AuthContext = {
   userId: string;
   email: string | null;
   role: Role;
+  /** staff / admin の場合のスタッフ名（customer は null）。 */
+  staffName: string | null;
   /** staff / admin の場合のスタッフ ID（customer は null）。 */
   staffId: string | null;
   salonId: string | null;
@@ -26,49 +29,56 @@ export type AuthContext = {
  *
  * staff として登録（t_staff に user_id が存在）されていれば staff/admin、
  * そうでなければ customer 扱い。
+ *
+ * React の cache() でメモ化し、1 リクエスト内（layout＋page など）で複数回
+ * 呼ばれても getUser／t_staff 問い合わせが 1 回で済むようにする。
  */
-export async function getAuthContext(): Promise<AuthContext | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export const getAuthContext = cache(
+  async (): Promise<AuthContext | null> => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) return null;
+    if (!user) return null;
 
-  // staff レコードを引き、権限（is_admin）を導出する。
-  const { data: staff, error: staffError } = await supabase
-    .from("t_staff")
-    .select("staff_id, salon_id, is_admin")
-    .eq("user_id", user.id)
-    .eq("delete_flg", false)
-    .maybeSingle();
+    // staff レコードを引き、権限（is_admin）を導出する。
+    const { data: staff, error: staffError } = await supabase
+      .from("t_staff")
+      .select("staff_id, staff_name, salon_id, is_admin")
+      .eq("user_id", user.id)
+      .eq("delete_flg", false)
+      .maybeSingle();
 
-  if (staffError) {
-    // DB エラーをサイレントに無視すると、スタッフが誤って customer 扱いされる。
-    // エラーをログし、呼び出し元がハンドリングできるよう例外を投げる。
-    console.error("[auth] t_staff 取得失敗:", staffError);
-    throw new Error("認証情報の取得に失敗しました。");
-  }
+    if (staffError) {
+      // DB エラーをサイレントに無視すると、スタッフが誤って customer 扱いされる。
+      // エラーをログし、呼び出し元がハンドリングできるよう例外を投げる。
+      console.error("[auth] t_staff 取得失敗:", staffError);
+      throw new Error("認証情報の取得に失敗しました。");
+    }
 
-  if (staff) {
+    if (staff) {
+      return {
+        userId: user.id,
+        email: user.email ?? null,
+        role: staff.is_admin ? "admin" : "staff",
+        staffName: staff.staff_name,
+        staffId: staff.staff_id,
+        salonId: staff.salon_id,
+      };
+    }
+
+    // staff でなければ customer（自分の Be:note のみ閲覧可）。
     return {
       userId: user.id,
       email: user.email ?? null,
-      role: staff.is_admin ? "admin" : "staff",
-      staffId: staff.staff_id,
-      salonId: staff.salon_id,
+      role: "customer",
+      staffName: null,
+      staffId: null,
+      salonId: null,
     };
-  }
-
-  // staff でなければ customer（自分の Be:note のみ閲覧可）。
-  return {
-    userId: user.id,
-    email: user.email ?? null,
-    role: "customer",
-    staffId: null,
-    salonId: null,
-  };
-}
+  },
+);
 
 /**
  * 認証必須ガード。未認証なら /login へリダイレクト。
