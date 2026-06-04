@@ -1,9 +1,19 @@
 import { apiRoute } from "@/lib/api/handler";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { paginated } from "@/lib/api/response";
+import { ok, paginated } from "@/lib/api/response";
 import { ApiError } from "@/lib/api/errors";
 import { parsePagination } from "@/lib/api/pagination";
-import { assertUuid, optionalDateString } from "@/lib/api/validate";
+import {
+  assertUuid,
+  optionalDateString,
+  optionalString,
+  optionalUuid,
+  parseJsonObject,
+  requireInt,
+  requireIsoDatetime,
+  requireString,
+  requireUuid,
+} from "@/lib/api/validate";
 import {
   jstDateEndExclusiveUtc,
   jstDateStartUtc,
@@ -108,6 +118,98 @@ export const GET = apiRoute(
   },
   { roles: ["staff", "admin"] },
 );
+
+/**
+ * POST /api/v1/reservations — 即時予約作成（staff / admin）。
+ * head＋予約ノード＋t_reservation＋t_menu を RPC で 1 トランザクション作成。
+ * 二重防御: Idempotency-Key（冪等）＋ DB EXCLUDE（ダブルブッキング→409）。
+ */
+export const POST = apiRoute(
+  async ({ req, auth, svc }) => {
+    if (!auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "サロン情報が取得できません。");
+    }
+
+    const idempotencyKey = req.headers.get("Idempotency-Key");
+    if (!idempotencyKey) {
+      throw new ApiError("INVALID_PARAMS", "Idempotency-Key ヘッダが必要です。");
+    }
+    assertUuid(idempotencyKey, "Idempotency-Key");
+
+    const body = await parseJsonObject(req);
+    const clientId = requireUuid(body.client_id, "client_id");
+    const staffId = requireUuid(body.staff_id, "staff_id");
+    const slotId = optionalUuid(body.slot_id, "slot_id");
+    const start = requireIsoDatetime(body.reservation_start, "reservation_start");
+    const end = requireIsoDatetime(body.reservation_end, "reservation_end");
+    if (Date.parse(start) >= Date.parse(end)) {
+      throw new ApiError(
+        "INVALID_PARAMS",
+        "reservation_start は reservation_end より前にしてください。",
+      );
+    }
+    const mainMenu = requireString(body.main_menu, "main_menu", 20);
+    const menuList = parseMenuList(body.menu_list);
+    const futureFlg = Date.parse(start) > Date.now();
+
+    const payload = {
+      salon_id: auth.salonId,
+      staff_id: staffId,
+      client_id: clientId,
+      slot_id: slotId,
+      reservation_start: start,
+      reservation_end: end,
+      main_menu: mainMenu,
+      future_flg: futureFlg,
+      idempotency_key: idempotencyKey,
+      menu_list: menuList,
+    };
+
+    const { data, error } = await svc.rpc("create_immediate_reservation", {
+      payload,
+    });
+    if (error) {
+      if ((error.message ?? "").includes("DOUBLE_BOOKING")) {
+        throw new ApiError(
+          "DOUBLE_BOOKING",
+          "指定の時間帯はすでに予約が入っています。",
+        );
+      }
+      throw new ApiError("INTERNAL_ERROR", "予約の作成に失敗しました。");
+    }
+    const noteId = (data as { note_id?: string } | null)?.note_id;
+    if (!noteId) {
+      throw new ApiError("INTERNAL_ERROR", "予約の作成に失敗しました。");
+    }
+    return ok({ note_id: noteId }, 201);
+  },
+  { roles: ["staff", "admin"] },
+);
+
+/** menu_list（任意配列）を検証して RPC 用に整形する。 */
+function parseMenuList(v: unknown): unknown[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) {
+    throw new ApiError("INVALID_PARAMS", "menu_list は配列で指定してください。");
+  }
+  return v.map((raw, i) => {
+    if (typeof raw !== "object" || raw === null) {
+      throw new ApiError(
+        "INVALID_PARAMS",
+        `menu_list[${i}] はオブジェクトで指定してください。`,
+      );
+    }
+    const m = raw as Record<string, unknown>;
+    return {
+      menu_master_id: optionalUuid(m.menu_master_id, `menu_list[${i}].menu_master_id`),
+      menu_name: requireString(m.menu_name, `menu_list[${i}].menu_name`, 20),
+      kinds: optionalString(m.kinds, `menu_list[${i}].kinds`, 20),
+      staff_id: optionalUuid(m.staff_id, `menu_list[${i}].staff_id`),
+      memo: optionalString(m.memo, `menu_list[${i}].memo`, 100),
+      price: requireInt(m.price, `menu_list[${i}].price`, 0),
+    };
+  });
+}
 
 /** 埋め込み t_be_note（多対一＝オブジェクト想定）から client_id を取り出す。 */
 function embeddedClientId(embedded: unknown): string | null {
