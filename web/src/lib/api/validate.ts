@@ -102,3 +102,46 @@ export function assertUuid(v: string, field: string): string {
   }
   return v;
 }
+
+/** 必須 UUID（本文値）。 */
+export function requireUuid(v: unknown, field: string): string {
+  if (typeof v !== "string" || !UUID_RE.test(v)) {
+    throw new ApiError("INVALID_PARAMS", `${field} は UUID で指定してください。`);
+  }
+  return v;
+}
+
+/** 任意 UUID（未指定/null/空は null）。 */
+export function optionalUuid(v: unknown, field: string): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v !== "string" || !UUID_RE.test(v)) {
+    throw new ApiError("INVALID_PARAMS", `${field} は UUID で指定してください。`);
+  }
+  return v;
+}
+
+/** 必須 ISO 8601 日時。元の文字列を返す（DB 側で timestamptz にキャスト）。 */
+export function requireIsoDatetime(v: unknown, field: string): string {
+  const s = requireString(v, field);
+  if (Number.isNaN(Date.parse(s))) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ISO 8601 日時で指定してください。`,
+    );
+  }
+  return s;
+}
+
+/** 必須整数（任意で下限チェック）。 */
+export function requireInt(v: unknown, field: string, min?: number): number {
+  if (typeof v !== "number" || !Number.isInteger(v)) {
+    throw new ApiError("INVALID_PARAMS", `${field} は整数で指定してください。`);
+  }
+  if (min !== undefined && v < min) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${min} 以上で指定してください。`,
+    );
+  }
+  return v;
+}
