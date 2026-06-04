@@ -93,7 +93,7 @@ create or replace function public.create_reservation_request(payload jsonb)
 as $$
 declare
   v_client    uuid        := (payload ->> 'client_id')::uuid;
-  v_staff     uuid        := (payload ->> 'staff_id')::uuid;
+  v_staff     uuid        := nullif(payload ->> 'staff_id', '')::uuid;  -- 指名なしは NULL
   v_menu_mst  uuid        := (payload ->> 'menu_master_id')::uuid;
   v_start     timestamptz := (payload ->> 'desired_start')::timestamptz;
   v_idem      uuid        := nullif(payload ->> 'idempotency_key', '')::uuid;

@@ -6,7 +6,7 @@
 create table t_reservation (
     note_id            uuid         primary key references t_be_note,
     salon_id           uuid         not null references t_salon,
-    staff_id           uuid         not null references t_staff,  -- この予約の担当スタッフ
+    staff_id           uuid         references t_staff,  -- 担当スタッフ（指名なしリクエストは NULL、確定時に割当。confirmed 以上は非 NULL 必須＝アプリ層で担保）
     slot_id            uuid         references t_reservation_slot,
     status             varchar(20)  not null default 'confirmed',
       -- 'draft'|'requested'|'pending'|'confirmed'|

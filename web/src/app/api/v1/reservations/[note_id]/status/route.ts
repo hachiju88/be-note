@@ -27,7 +27,7 @@ export const PATCH = apiRoute<Params>(
     const { data: r, error } = await svc
       .from("t_reservation")
       .select(
-        "note_id, status, salon_id, reservation_start, t_be_note!inner(client_id, delete_flg)",
+        "note_id, status, salon_id, staff_id, reservation_start, t_be_note!inner(client_id, delete_flg)",
       )
       .eq("note_id", params.note_id)
       .eq("t_be_note.delete_flg", false)
@@ -57,6 +57,20 @@ export const PATCH = apiRoute<Params>(
       throw new ApiError(
         "INVALID_PARAMS",
         `status を ${current} から ${target} へは変更できません。`,
+      );
+    }
+
+    // 指名なしリクエスト等で staff 未割当のまま confirmed 系へは遷移不可
+    // （staff_id NULL の confirmed は EXCLUDE のダブルブッキング判定を素通りするため）。
+    const STAFF_REQUIRED: ReservationStatus[] = [
+      "confirmed",
+      "checked_in",
+      "in_progress",
+    ];
+    if (STAFF_REQUIRED.includes(target) && !r.staff_id) {
+      throw new ApiError(
+        "INVALID_PARAMS",
+        "担当スタッフを割り当ててから確定してください（PUT で staff_id を設定）。",
       );
     }
 

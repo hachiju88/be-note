@@ -11,7 +11,7 @@ create table t_be_note (
     note_type          smallint     not null references t_note_type(note_type_id),
     salon_id           uuid         not null references t_salon,
     client_id          uuid         not null references t_client,
-    responsible        uuid         not null references t_staff(staff_id),  -- 来店全体の主担当
+    responsible        uuid         references t_staff(staff_id),  -- 来店全体の主担当（指名なしリクエストは NULL、承認時に割当）
     creation_datetime  timestamptz  not null default now(),
     future_flg         boolean      not null default false,  -- true=未来の予約
     is_client          boolean,     -- textノードのみ使用（true=顧客からのメッセージ）

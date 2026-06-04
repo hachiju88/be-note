@@ -308,6 +308,18 @@ Body:
 Response: 201 { "note_id": "0190a1b2-c3d4-7e80-c000-000000000101" }
 ```
 
+**note_type 別の追加フィールド**
+
+`head` は追加フィールドなし（来店の親ノード）。`p_note_id` は head 以外で必須（head は指定不可）。
+
+- **`text`**（DM）：`text`（必須・最大300字）。`is_client=false`（staff/admin 作成）・`read_flg=false` はサーバ側で付与。
+- **`item`**（物販）：`item_list: [{ item_name(必須・20), kinds(20), memo(100), price(整数), staff_id(任意・省略時は主担当) }]`
+- **`discount`**（割引）：`discount_list: [{ discount_name(必須・20), kinds(20), memo(100), price(整数・0以下), staff_id(任意) }]`
+- **`photo`**（写真）：`photo_list: [{ storage_path(必須・200), memo(100), staff_id(任意) }]`（アップロード後の Storage パスを渡す）
+- **`reservation`**（予約）：即時予約は `POST /reservations`（`Idempotency-Key`＋ダブルブッキング二重防御）を使用する。
+
+> 各 `*_list` は 1 ノードに複数明細をぶら下げられる（`t_menu` / `t_sold_item` / `t_discount` / `t_photo` は `note_id` 参照）。
+
 ---
 
 ## 予約（Reservations）
