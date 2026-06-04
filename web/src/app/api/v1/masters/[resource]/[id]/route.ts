@@ -22,12 +22,13 @@ export const PUT = apiRoute<Params>(
     if (Object.keys(patch).length === 0) {
       return ok({ [def.idColumn]: id });
     }
-    const { data, error } = await svc
+    let updateQuery = svc
       .from(def.table)
       .update(patch)
       .eq(def.idColumn, id)
-      .eq("salon_id", auth.salonId)
-      .select(def.idColumn);
+      .eq("salon_id", auth.salonId);
+    if (def.logicalDelete) updateQuery = updateQuery.eq("delete_flg", false);
+    const { data, error } = await updateQuery.select(def.idColumn);
     if (error) mapMasterError(error);
     if (!data || data.length === 0) {
       throw new ApiError("NOT_FOUND", "対象が見つかりません。");
@@ -47,8 +48,9 @@ export const DELETE = apiRoute<Params>(
     const id = parseMasterId(def, params.id);
 
     const base = svc.from(def.table);
+    // 論理削除済みの再削除は 404（delete_flg=false に限定）。
     const query = def.logicalDelete
-      ? base.update({ delete_flg: true })
+      ? base.update({ delete_flg: true }).eq("delete_flg", false)
       : base.delete();
     const { data, error } = await query
       .eq(def.idColumn, id)

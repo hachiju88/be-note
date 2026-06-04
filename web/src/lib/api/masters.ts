@@ -248,9 +248,18 @@ export function parseMasterId(def: MasterDef, raw: string): string | number {
     }
     return n;
   }
-  // date
+  // date（実在日チェック込み）
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     throw new ApiError("INVALID_PARAMS", `${def.idColumn} は YYYY-MM-DD で指定してください。`);
+  }
+  const [y, m, d] = raw.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== m - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    throw new ApiError("INVALID_PARAMS", `${def.idColumn} に有効な日付を指定してください。`);
   }
   return raw;
 }
