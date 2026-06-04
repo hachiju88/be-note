@@ -104,17 +104,25 @@ export const POST = apiRoute<Params>(
 
     const futureFlg = requireOptionalBool(body.future_flg, "future_flg") ?? false;
 
-    // p_note_id（親 head）。head は親を持てない。text は任意（指定時は同一顧客の存在を検証）。
+    // p_note_id。head は親を持てない。head 以外（text 等）は親 head が必須。
+    // 親なしで作ると head 起点の GET 一覧に現れない迷子データになるため必須化し、
+    // 親が同一顧客の head（note_type=1）であることまで検証する。
     let pNoteId: string | null = null;
     if (noteTypeCode === "head") {
       if (body.p_note_id != null) {
         throw new ApiError("INVALID_PARAMS", "head は p_note_id を指定できません。");
       }
-    } else if (body.p_note_id != null) {
+    } else {
+      if (body.p_note_id == null) {
+        throw new ApiError(
+          "INVALID_PARAMS",
+          `${noteTypeCode} には p_note_id が必須です。`,
+        );
+      }
       pNoteId = assertUuid(String(body.p_note_id), "p_note_id");
       const { data: parent, error: parentError } = await svc
         .from("t_be_note")
-        .select("note_id")
+        .select("note_id, note_type")
         .eq("note_id", pNoteId)
         .eq("client_id", params.client_id)
         .eq("delete_flg", false)
@@ -124,6 +132,12 @@ export const POST = apiRoute<Params>(
       }
       if (!parent) {
         throw new ApiError("INVALID_PARAMS", "親ノート（p_note_id）が見つかりません。");
+      }
+      if (parent.note_type !== toNoteTypeId("head")) {
+        throw new ApiError(
+          "INVALID_PARAMS",
+          "親ノート（p_note_id）は head である必要があります。",
+        );
       }
     }
 
