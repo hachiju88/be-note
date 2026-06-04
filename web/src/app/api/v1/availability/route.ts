@@ -43,26 +43,32 @@ export const GET = apiRoute(
       .maybeSingle();
     if (menuError) throw new ApiError("INTERNAL_ERROR", "メニューの取得に失敗しました。");
     if (!menu) throw new ApiError("INVALID_PARAMS", "menu_master_id が存在しません。");
+    // staff/admin は自サロンのメニューのみ照会可（他サロンメニュー指定を拒否）。
+    if (auth.salonId && menu.salon_id !== auth.salonId) {
+      throw new ApiError("FORBIDDEN", "他のサロンのメニューは指定できません。");
+    }
     const salonId = auth.salonId ?? menu.salon_id;
     const durationMin = menu.duration_minutes as number;
 
     // 定休日・臨時休業なら空き 0。
-    const { data: holiday } = await svc
+    const { data: holiday, error: holidayError } = await svc
       .from("t_holiday")
       .select("holiday_date")
       .eq("salon_id", salonId)
       .eq("holiday_date", date)
       .maybeSingle();
+    if (holidayError) throw new ApiError("INTERNAL_ERROR", "休日の取得に失敗しました。");
     if (holiday) return ok(emptyResponse(auth.role, staffId));
 
     // 営業時間（曜日別）。無ければ休業日扱い。
     const dow = weekdayOf(date);
-    const { data: bh } = await svc
+    const { data: bh, error: bhError } = await svc
       .from("t_business_hour")
       .select("open_time, close_time")
       .eq("salon_id", salonId)
       .eq("day_of_week", dow)
       .maybeSingle();
+    if (bhError) throw new ApiError("INTERNAL_ERROR", "営業時間の取得に失敗しました。");
     if (!bh) return ok(emptyResponse(auth.role, staffId));
     const business: Interval = {
       start: parseTimeToMin(bh.open_time),
@@ -168,8 +174,9 @@ async function fetchBusy(
     .eq("salon_id", salonId)
     .eq("t_be_note.delete_flg", false)
     .in("status", BUSY_STATUSES)
-    .gte("reservation_start", jstDateStartUtc(date))
-    .lt("reservation_start", jstDateEndExclusiveUtc(date));
+    // 当日と重なる予約（前日跨ぎ／翌日跨ぎ含む）を区間重複で取得する。
+    .lt("reservation_start", jstDateEndExclusiveUtc(date))
+    .gt("reservation_end", jstDateStartUtc(date));
   if (staffId) q = q.eq("staff_id", staffId);
   const { data, error } = await q;
   if (error) throw new ApiError("INTERNAL_ERROR", "予約の取得に失敗しました。");

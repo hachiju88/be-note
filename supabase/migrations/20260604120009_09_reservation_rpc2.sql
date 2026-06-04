@@ -49,6 +49,12 @@ begin
     raise exception 'VERSION_CONFLICT' using errcode = 'P0001';
   end if;
 
+  -- 予約ノードと親 head の responsible（主担当）を staff_id に同期する。
+  update t_be_note
+  set responsible = v_staff
+  where note_id = v_note
+     or note_id = (select p_note_id from t_be_note where note_id = v_note);
+
   -- 明細は全置換。
   delete from t_menu where note_id = v_note;
   for v_menu in
@@ -100,7 +106,11 @@ declare
   v_existing  uuid;
 begin
   if v_idem is not null then
-    select note_id into v_existing from t_reservation where idempotency_key = v_idem;
+    -- 論理削除済みは有効な予約として返さない（delete_flg=false に限定）。
+    select r.note_id into v_existing
+    from t_reservation r
+    join t_be_note b on b.note_id = r.note_id
+    where r.idempotency_key = v_idem and b.delete_flg = false;
     if found then
       return jsonb_build_object('note_id', v_existing, 'status', 'requested', 'idempotent', true);
     end if;
@@ -139,7 +149,10 @@ exception
     raise exception 'INVALID_REFERENCE' using errcode = 'P0001';
   when unique_violation then
     if v_idem is not null then
-      select note_id into v_existing from t_reservation where idempotency_key = v_idem;
+      select r.note_id into v_existing
+      from t_reservation r
+      join t_be_note b on b.note_id = r.note_id
+      where r.idempotency_key = v_idem and b.delete_flg = false;
       if found then
         return jsonb_build_object('note_id', v_existing, 'status', 'requested', 'idempotent', true);
       end if;

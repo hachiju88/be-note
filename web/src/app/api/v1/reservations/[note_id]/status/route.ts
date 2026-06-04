@@ -56,11 +56,15 @@ export const PATCH = apiRoute<Params>(
 
     // キャンセル期限チェック（customer のみ）。staff/admin は期限に関係なく可。
     if (auth.role === "customer" && target === "cancelled") {
-      const { data: salon } = await svc
+      const { data: salon, error: salonError } = await svc
         .from("t_salon")
         .select("cancel_deadline_days")
         .eq("salon_id", r.salon_id)
         .maybeSingle();
+      // エラーを無視すると days=0 でキャンセル期限を素通りさせてしまう（要厳格化）。
+      if (salonError) {
+        throw new ApiError("INTERNAL_ERROR", "サロン情報の取得に失敗しました。");
+      }
       const days = salon?.cancel_deadline_days ?? 0;
       const deadline =
         Date.parse(r.reservation_start) - days * 24 * 60 * 60 * 1000;
