@@ -15,7 +15,10 @@ import { fetchStaffNames, staffRef } from "@/lib/api/staff";
 /**
  * GET /api/v1/reservations — 予約一覧（staff / admin）。
  * date_from（既定: 当日）/ date_to / staff_id / status で絞り込み、reservation_start 昇順。
- * client は予約ノート（t_be_note）経由、staff は staff_id 経由で名前を付与する。
+ *
+ * 論理削除は親 t_be_note.delete_flg で表す（t_reservation 自体は持たない）。
+ * よって t_be_note を inner join し delete_flg=false の予約のみ返す（count も正しくなる）。
+ * client_id は同じ埋め込みから取得する。
  */
 export const GET = apiRoute(
   async ({ req, auth, svc }) => {
@@ -42,10 +45,11 @@ export const GET = apiRoute(
     let query = svc
       .from("t_reservation")
       .select(
-        "note_id, staff_id, status, reservation_start, reservation_end, main_menu, current_task_id",
+        "note_id, staff_id, status, reservation_start, reservation_end, main_menu, current_task_id, t_be_note!inner(client_id, delete_flg)",
         { count: "exact" },
       )
       .eq("salon_id", auth.salonId)
+      .eq("t_be_note.delete_flg", false)
       .gte("reservation_start", startUtc)
       .lt("reservation_start", endUtc);
     if (staffId) query = query.eq("staff_id", staffId);
@@ -63,69 +67,65 @@ export const GET = apiRoute(
     }
     const reservations = rows ?? [];
 
-    // client は予約ノート（t_be_note.client_id）経由。staff 名と並行して引く。
-    const noteIds = reservations.map((r) => r.note_id);
-    const [clientByNote, staffNames] = await Promise.all([
-      fetchClientByNote(svc, noteIds),
+    // client_id は埋め込み（t_be_note）から。client 名・staff 名をまとめて引く（N+1 回避）。
+    const clientIds = reservations
+      .map((r) => embeddedClientId(r.t_be_note))
+      .filter((id): id is string => !!id);
+    const [clientNames, staffNames] = await Promise.all([
+      fetchClientNames(svc, clientIds),
       fetchStaffNames(
         svc,
         reservations.map((r) => r.staff_id),
       ),
     ]);
 
-    const data = reservations.map((r) => ({
-      note_id: r.note_id,
-      client: clientByNote.get(r.note_id) ?? null,
-      staff: staffRef(r.staff_id, staffNames),
-      status: r.status,
-      reservation_start: r.reservation_start,
-      reservation_end: r.reservation_end,
-      main_menu: r.main_menu,
-      current_task_id: r.current_task_id,
-    }));
+    const data = reservations.map((r) => {
+      const clientId = embeddedClientId(r.t_be_note);
+      return {
+        note_id: r.note_id,
+        client: clientId
+          ? {
+              client_id: clientId,
+              client_name: clientNames.get(clientId) ?? null,
+            }
+          : null,
+        staff: staffRef(r.staff_id, staffNames),
+        status: r.status,
+        reservation_start: r.reservation_start,
+        reservation_end: r.reservation_end,
+        main_menu: r.main_menu,
+        current_task_id: r.current_task_id,
+      };
+    });
 
     return paginated(data, { page, per_page: perPage, total: count ?? 0 });
   },
   { roles: ["staff", "admin"] },
 );
 
-type ClientRef = { client_id: string; client_name: string | null };
-
-/** note_id → { client_id, client_name }（予約ノート→顧客）。 */
-async function fetchClientByNote(
-  svc: SupabaseClient,
-  noteIds: string[],
-): Promise<Map<string, ClientRef>> {
-  const result = new Map<string, ClientRef>();
-  if (noteIds.length === 0) return result;
-
-  const { data: notes, error: noteError } = await svc
-    .from("t_be_note")
-    .select("note_id, client_id")
-    .in("note_id", noteIds);
-  if (noteError) {
-    throw new ApiError("INTERNAL_ERROR", "予約ノートの取得に失敗しました。");
+/** 埋め込み t_be_note（多対一＝オブジェクト想定）から client_id を取り出す。 */
+function embeddedClientId(embedded: unknown): string | null {
+  const row = Array.isArray(embedded) ? embedded[0] : embedded;
+  if (row && typeof row === "object" && "client_id" in row) {
+    const id = (row as { client_id: unknown }).client_id;
+    return typeof id === "string" ? id : null;
   }
-  const noteRows = notes ?? [];
-  const clientIds = [...new Set(noteRows.map((n) => n.client_id))];
-  if (clientIds.length === 0) return result;
+  return null;
+}
 
-  const { data: clients, error: clientError } = await svc
+/** client_id → client_name のマップ。 */
+async function fetchClientNames(
+  svc: SupabaseClient,
+  clientIds: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(clientIds)];
+  if (unique.length === 0) return new Map();
+  const { data, error } = await svc
     .from("t_client")
     .select("client_id, client_name")
-    .in("client_id", clientIds);
-  if (clientError) {
+    .in("client_id", unique);
+  if (error) {
     throw new ApiError("INTERNAL_ERROR", "顧客情報の取得に失敗しました。");
   }
-  const nameById = new Map(
-    (clients ?? []).map((c) => [c.client_id, c.client_name]),
-  );
-
-  for (const n of noteRows) {
-    result.set(n.note_id, {
-      client_id: n.client_id,
-      client_name: nameById.get(n.client_id) ?? null,
-    });
-  }
-  return result;
+  return new Map((data ?? []).map((c) => [c.client_id, c.client_name]));
 }
