@@ -145,3 +145,69 @@ export function requireInt(v: unknown, field: string, min?: number): number {
   }
   return v;
 }
+
+/** 必須数値（小数可。任意で下限チェック）。 */
+export function requireNumber(v: unknown, field: string, min?: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new ApiError("INVALID_PARAMS", `${field} は数値で指定してください。`);
+  }
+  if (min !== undefined && v < min) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${min} 以上で指定してください。`,
+    );
+  }
+  return v;
+}
+
+/** 必須真偽値。 */
+export function requireBoolean(v: unknown, field: string): boolean {
+  if (typeof v !== "boolean") {
+    throw new ApiError("INVALID_PARAMS", `${field} は true / false で指定してください。`);
+  }
+  return v;
+}
+
+/** 列挙（許容値のいずれか）。 */
+export function requireEnum<T extends string>(
+  v: unknown,
+  field: string,
+  allowed: readonly T[],
+): T {
+  if (typeof v !== "string" || !(allowed as readonly string[]).includes(v)) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${allowed.join(" / ")} のいずれかで指定してください。`,
+    );
+  }
+  return v as T;
+}
+
+/** 整数範囲（min..max 両端含む）。 */
+export function requireIntInRange(
+  v: unknown,
+  field: string,
+  min: number,
+  max: number,
+): number {
+  const n = requireInt(v, field);
+  if (n < min || n > max) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${min}〜${max} で指定してください。`,
+    );
+  }
+  return n;
+}
+
+/** 時刻文字列（HH:MM または HH:MM:SS）。 */
+export function requireTime(v: unknown, field: string): string {
+  const s = requireString(v, field);
+  if (!/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(s)) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は HH:MM または HH:MM:SS で指定してください。`,
+    );
+  }
+  return s;
+}

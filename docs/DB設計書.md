@@ -137,7 +137,8 @@ CREATE TABLE t_task (
     salon_id    UUID  NOT NULL REFERENCES t_salon,
     task_name   VARCHAR(20)  NOT NULL,    -- 'check_in' | 'wash' | 'cut' ...
     task_order  INTEGER      NOT NULL,    -- 列の表示順
-    role_limit  VARCHAR(10)  DEFAULT NULL -- NULL=制限なし | 'stylist'=position が stylist のみ可
+    role_limit  VARCHAR(10)  DEFAULT NULL, -- NULL=制限なし | 'stylist'=position が stylist のみ可
+    delete_flg  BOOLEAN      NOT NULL DEFAULT false  -- 論理削除（t_staff_skill / t_reservation.current_task_id が FK 参照）
 );
 ```
 
