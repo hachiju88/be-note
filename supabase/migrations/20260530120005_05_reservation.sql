@@ -6,7 +6,7 @@
 create table t_reservation (
     note_id            uuid         primary key references t_be_note,
     salon_id           uuid         not null references t_salon,
-    staff_id           uuid         not null references t_staff,  -- この予約の担当スタッフ
+    staff_id           uuid         references t_staff,  -- 担当スタッフ（指名なしリクエストは NULL、確定時に割当。confirmed 以上は非 NULL 必須＝アプリ層で担保）
     slot_id            uuid         references t_reservation_slot,
     status             varchar(20)  not null default 'confirmed',
       -- 'draft'|'requested'|'pending'|'confirmed'|
@@ -30,7 +30,11 @@ create table t_reservation (
     constraint check_reservation_time check (reservation_start < reservation_end),
     constraint check_actual_time check (actual_start is null or actual_end is null or actual_start < actual_end),
     constraint check_total_non_negative check (total is null or total >= 0),
-    constraint check_payment_method check (payment_method is null or payment_method in ('cash', 'card', 'qr'))
+    constraint check_payment_method check (payment_method is null or payment_method in ('cash', 'card', 'qr')),
+    -- confirmed 以上は担当スタッフ必須（staff_id NULL の confirmed は EXCLUDE を素通りするため）。
+    constraint check_staff_required_for_confirmed check (
+      status not in ('confirmed', 'checked_in', 'in_progress', 'done') or staff_id is not null
+    )
 );
 
 -- ダブルブッキング防止（DB層）。draft/cancelled/rejected は対象外＝再予約可。

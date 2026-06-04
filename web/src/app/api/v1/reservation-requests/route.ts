@@ -3,6 +3,7 @@ import { ok } from "@/lib/api/response";
 import { ApiError } from "@/lib/api/errors";
 import {
   assertUuid,
+  optionalUuid,
   parseJsonObject,
   requireIsoDatetime,
   requireUuid,
@@ -14,8 +15,9 @@ import { mapReservationRpcError } from "@/lib/api/reservation";
  * 自分（auth.clientId）名義で status=requested を作成する。所要時間は
  * menu_master.duration_minutes から RPC 内で算出。create_reservation_request で原子的処理。
  *
- * NOTE: 設計書（API）では staff_id 任意（指名なし可）だが、t_reservation.staff_id は
- * NOT NULL のため現状は staff_id 必須とする（指名なしはスキーマ方針の確定後に対応）。
+ * staff_id は任意（指名なし可）。指名なしは t_reservation.staff_id / t_be_note.responsible
+ * が NULL となり、承認（confirmed）時にスタッフを割り当てる（status は staff 未割当だと
+ * confirmed へ遷移不可）。
  */
 export const POST = apiRoute(
   async ({ req, auth, svc }) => {
@@ -32,7 +34,7 @@ export const POST = apiRoute(
     const body = await parseJsonObject(req);
     const payload = {
       client_id: auth.clientId,
-      staff_id: requireUuid(body.staff_id, "staff_id"),
+      staff_id: optionalUuid(body.staff_id, "staff_id"),
       menu_master_id: requireUuid(body.menu_master_id, "menu_master_id"),
       desired_start: requireIsoDatetime(body.desired_start, "desired_start"),
       idempotency_key: idempotencyKey,

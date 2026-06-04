@@ -289,7 +289,7 @@ CREATE TABLE t_be_note (
     note_type          SMALLINT     NOT NULL REFERENCES t_note_type(note_type_id),
     salon_id           UUID  NOT NULL REFERENCES t_salon,
     client_id          UUID  NOT NULL REFERENCES t_client,
-    responsible        UUID  NOT NULL REFERENCES t_staff(staff_id),  -- 来店全体の主担当
+    responsible        UUID  REFERENCES t_staff(staff_id),  -- 来店全体の主担当（指名なしリクエストは NULL。承認/確定時に割当）
     creation_datetime  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     future_flg         BOOLEAN      NOT NULL DEFAULT false,  -- true=未来の予約
     is_client          BOOLEAN,     -- textノードのみ使用（true=顧客からのメッセージ）
@@ -312,7 +312,7 @@ CREATE INDEX idx_be_note_parent ON t_be_note (p_note_id);
 CREATE TABLE t_reservation (
     note_id          UUID  PRIMARY KEY REFERENCES t_be_note,
     salon_id           UUID  NOT NULL REFERENCES t_salon,
-    staff_id           UUID  NOT NULL REFERENCES t_staff,  -- この予約の担当スタッフ
+    staff_id           UUID  REFERENCES t_staff,  -- 担当スタッフ（指名なしリクエストは NULL。confirmed 以上は非 NULL 必須＝アプリ層で担保）
     slot_id            UUID      REFERENCES t_reservation_slot,
     status             VARCHAR(20)  NOT NULL DEFAULT 'confirmed',
       -- 'draft'|'requested'|'pending'|'confirmed'|
