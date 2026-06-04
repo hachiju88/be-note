@@ -34,6 +34,12 @@ export const GET = apiRoute(
       todayJst();
     const dateTo =
       optionalDateString(searchParams.get("date_to"), "date_to") ?? dateFrom;
+    if (dateFrom > dateTo) {
+      throw new ApiError(
+        "INVALID_PARAMS",
+        "date_from は date_to 以前の日付で指定してください。",
+      );
+    }
     const startUtc = jstDateStartUtc(dateFrom);
     const endUtc = jstDateEndExclusiveUtc(dateTo);
 
