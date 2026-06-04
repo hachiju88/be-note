@@ -168,11 +168,18 @@ export const POST = apiRoute(
       payload,
     });
     if (error) {
-      // RPC は二重予約時に SQLSTATE P0001 + メッセージ 'DOUBLE_BOOKING' を送出する。
-      if (error.code === "P0001" || (error.message ?? "").includes("DOUBLE_BOOKING")) {
+      // RPC は P0001 + メッセージで種別を伝える。
+      const message = error.message ?? "";
+      if (error.code === "P0001" && message.includes("DOUBLE_BOOKING")) {
         throw new ApiError(
           "DOUBLE_BOOKING",
           "指定の時間帯はすでに予約が入っています。",
+        );
+      }
+      if (error.code === "P0001" && message.includes("INVALID_REFERENCE")) {
+        throw new ApiError(
+          "INVALID_PARAMS",
+          "client_id / staff_id / slot_id が存在しません。",
         );
       }
       throw new ApiError("INTERNAL_ERROR", "予約の作成に失敗しました。");

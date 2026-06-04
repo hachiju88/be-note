@@ -83,8 +83,21 @@ begin
 
 exception
   when exclusion_violation then
+    -- 並行する同一 idempotency_key の予約が先にコミットしていれば冪等で既存を返す
+    -- （重複枠だが「自分のリトライ」なので 409 ではない）。
+    if v_idem is not null then
+      select note_id into v_existing
+      from t_reservation
+      where idempotency_key = v_idem;
+      if found then
+        return jsonb_build_object('note_id', v_existing, 'idempotent', true);
+      end if;
+    end if;
     -- DB 層の EXCLUDE（no_double_booking）。例外で全 insert はロールバックされる。
     raise exception 'DOUBLE_BOOKING' using errcode = 'P0001';
+  when foreign_key_violation then
+    -- client_id / staff_id / slot_id 等の参照先が存在しない → API は 400 にマップ。
+    raise exception 'INVALID_REFERENCE' using errcode = 'P0001';
   when unique_violation then
     -- idempotency_key の並行競合 → 既存を返す（冪等）。
     if v_idem is not null then
