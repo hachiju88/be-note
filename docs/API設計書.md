@@ -300,10 +300,10 @@ POST /api/v1/clients/{client_id}/notes
 Auth: staff / admin
 Body:
 {
-  "note_type": "reservation",
+  "note_type": "item",
   "p_note_id": "0190a1b2-c3d4-7e80-c000-000000000100",
   "future_flg": false,
-  // note_type に応じた追加フィールド
+  // note_type に応じた追加フィールド（下記参照）。reservation は POST /reservations を使用
 }
 Response: 201 { "note_id": "0190a1b2-c3d4-7e80-c000-000000000101" }
 ```
