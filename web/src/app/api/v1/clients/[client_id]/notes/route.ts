@@ -5,8 +5,8 @@ import { ApiError } from "@/lib/api/errors";
 import { parsePagination } from "@/lib/api/pagination";
 import { assertUuid } from "@/lib/api/validate";
 import { assertClientAccess } from "@/lib/api/ownership";
-import { toNoteTypeCode } from "@/lib/api/note-type";
-import { fetchStaffNames } from "@/lib/api/staff";
+import { toNoteTypeCode, toNoteTypeId } from "@/lib/api/note-type";
+import { fetchStaffNames, staffRef } from "@/lib/api/staff";
 
 type Params = { client_id: string };
 
@@ -31,7 +31,7 @@ export const GET = apiRoute<Params>(
         count: "exact",
       })
       .eq("client_id", params.client_id)
-      .eq("note_type", 1)
+      .eq("note_type", toNoteTypeId("head"))
       .eq("delete_flg", false);
     if (futureFlg !== undefined) headQuery = headQuery.eq("future_flg", futureFlg);
 
@@ -60,10 +60,7 @@ export const GET = apiRoute<Params>(
       note_id: h.note_id,
       p_note_id: null,
       note_type: "head",
-      responsible: {
-        staff_id: h.responsible,
-        staff_name: staffNames.get(h.responsible) ?? null,
-      },
+      responsible: staffRef(h.responsible, staffNames),
       creation_datetime: h.creation_datetime,
       future_flg: h.future_flg,
       children: childrenByParent.get(h.note_id) ?? [],
@@ -82,24 +79,27 @@ async function fetchChildren(
   const map = new Map<string, unknown[]>();
   if (headIds.length === 0) return map;
 
-  const { data: children } = await svc
+  const { data: children, error } = await svc
     .from("t_be_note")
     .select("note_id, p_note_id, note_type")
     .in("p_note_id", headIds)
     .eq("delete_flg", false)
     .order("creation_datetime", { ascending: true });
+  if (error) throw new ApiError("INTERNAL_ERROR", "子ノードの取得に失敗しました。");
   const childRows = children ?? [];
 
   // reservation の子要約用に t_reservation をまとめて引く。
+  const reservationTypeId = toNoteTypeId("reservation");
   const reservationIds = childRows
-    .filter((c) => c.note_type === 2)
+    .filter((c) => c.note_type === reservationTypeId)
     .map((c) => c.note_id);
   const reservations = new Map<string, Record<string, unknown>>();
   if (reservationIds.length > 0) {
-    const { data: rs } = await svc
+    const { data: rs, error: rError } = await svc
       .from("t_reservation")
       .select("note_id, reservation_start, reservation_end, main_menu, status, total")
       .in("note_id", reservationIds);
+    if (rError) throw new ApiError("INTERNAL_ERROR", "予約情報の取得に失敗しました。");
     for (const r of rs ?? []) reservations.set(r.note_id, r);
   }
 
@@ -108,7 +108,7 @@ async function fetchChildren(
       note_id: c.note_id,
       note_type: toNoteTypeCode(c.note_type),
     };
-    if (c.note_type === 2) {
+    if (c.note_type === reservationTypeId) {
       const r = reservations.get(c.note_id);
       if (r) {
         base.reservation_start = r.reservation_start;

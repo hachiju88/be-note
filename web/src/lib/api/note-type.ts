@@ -44,7 +44,11 @@ export function toNoteTypeCode(id: number): NoteTypeCode {
 
 /** API の note_type_code → DB の note_type_id。不正値は INVALID_PARAMS。 */
 export function toNoteTypeId(code: unknown): number {
-  if (typeof code !== "string" || !(code in ID_BY_CODE)) {
+  // `in` は prototype 由来のキー（toString 等）も真になるため、語彙配列で判定する。
+  if (
+    typeof code !== "string" ||
+    !(NOTE_TYPE_CODES as readonly string[]).includes(code)
+  ) {
     throw new ApiError(
       "INVALID_PARAMS",
       `note_type は ${NOTE_TYPE_CODES.join(" / ")} のいずれかで指定してください。`,
