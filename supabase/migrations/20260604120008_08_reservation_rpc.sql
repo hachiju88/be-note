@@ -26,7 +26,8 @@ declare
   v_start     timestamptz := (payload ->> 'reservation_start')::timestamptz;
   v_end       timestamptz := (payload ->> 'reservation_end')::timestamptz;
   v_main_menu text        := payload ->> 'main_menu';
-  v_future    boolean     := coalesce((payload ->> 'future_flg')::boolean, false);
+  -- future_flg は DB 側の now() で判定（API/DB 間のクロックずれを避ける）。
+  v_future    boolean     := v_start > now();
   v_idem      uuid        := nullif(payload ->> 'idempotency_key', '')::uuid;
   v_head      uuid;
   v_note      uuid;

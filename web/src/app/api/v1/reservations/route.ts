@@ -150,8 +150,8 @@ export const POST = apiRoute(
     }
     const mainMenu = requireString(body.main_menu, "main_menu", 20);
     const menuList = parseMenuList(body.menu_list);
-    const futureFlg = Date.parse(start) > Date.now();
 
+    // future_flg は RPC 内で DB の now() を基準に判定する（クロックずれ回避）。
     const payload = {
       salon_id: auth.salonId,
       staff_id: staffId,
@@ -160,7 +160,6 @@ export const POST = apiRoute(
       reservation_start: start,
       reservation_end: end,
       main_menu: mainMenu,
-      future_flg: futureFlg,
       idempotency_key: idempotencyKey,
       menu_list: menuList,
     };
@@ -169,7 +168,8 @@ export const POST = apiRoute(
       payload,
     });
     if (error) {
-      if ((error.message ?? "").includes("DOUBLE_BOOKING")) {
+      // RPC は二重予約時に SQLSTATE P0001 + メッセージ 'DOUBLE_BOOKING' を送出する。
+      if (error.code === "P0001" || (error.message ?? "").includes("DOUBLE_BOOKING")) {
         throw new ApiError(
           "DOUBLE_BOOKING",
           "指定の時間帯はすでに予約が入っています。",
