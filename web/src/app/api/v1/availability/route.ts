@@ -96,10 +96,15 @@ export const GET = apiRoute(
           );
         }
       }
-      const slots = generateSlots(free, durationMin).map((iv) => ({
-        start: new Date(midnightMs + iv.start * 60_000).toISOString(),
-        end: new Date(midnightMs + iv.end * 60_000).toISOString(),
-      }));
+      // start 昇順・重複排除（重なるシフトがあっても同一開始枠を二重に出さない）。
+      const seen = new Set<number>();
+      const slots = generateSlots(free, durationMin)
+        .filter((iv) => (seen.has(iv.start) ? false : (seen.add(iv.start), true)))
+        .sort((a, b) => a.start - b.start)
+        .map((iv) => ({
+          start: new Date(midnightMs + iv.start * 60_000).toISOString(),
+          end: new Date(midnightMs + iv.end * 60_000).toISOString(),
+        }));
       return { staff_id: sid, staff_name: names.get(sid) ?? null, slots };
     });
 

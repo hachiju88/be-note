@@ -35,6 +35,12 @@ export const PATCH = apiRoute<Params>(
     if (error) throw new ApiError("INTERNAL_ERROR", "予約の取得に失敗しました。");
     if (!r) throw new ApiError("NOT_FOUND", "予約が見つかりません。");
 
+    // staff/admin は自サロンの予約のみ操作可（多店舗化時の越境防止）。
+    // customer は salon を持たず、後段の assertClientAccess（本人性）で判定する。
+    if (auth.role !== "customer" && auth.salonId && r.salon_id !== auth.salonId) {
+      throw new ApiError("NOT_FOUND", "予約が見つかりません。");
+    }
+
     const current = r.status as ReservationStatus;
     const embed = Array.isArray(r.t_be_note) ? r.t_be_note[0] : r.t_be_note;
     const clientId = embed?.client_id as string | undefined;

@@ -18,11 +18,12 @@ export const PATCH = apiRoute<Params>(
     const body = await parseJsonObject(req);
     const taskId = requireUuid(body.task_id, "task_id");
 
-    // 予約の存在確認（論理削除されていない予約か）。
+    // 予約の存在確認（自サロン・論理削除されていない予約か）。
     const { data: reservation, error: findError } = await svc
       .from("t_reservation")
       .select("note_id, t_be_note!inner(delete_flg)")
       .eq("note_id", params.note_id)
+      .eq("salon_id", auth.salonId)
       .eq("t_be_note.delete_flg", false)
       .maybeSingle();
     if (findError) throw new ApiError("INTERNAL_ERROR", "予約の取得に失敗しました。");
