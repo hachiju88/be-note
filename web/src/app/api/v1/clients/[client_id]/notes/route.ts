@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiRoute } from "@/lib/api/handler";
-import { paginated } from "@/lib/api/response";
+import { ok, paginated } from "@/lib/api/response";
 import { ApiError } from "@/lib/api/errors";
 import { parsePagination } from "@/lib/api/pagination";
-import { assertUuid } from "@/lib/api/validate";
+import {
+  assertUuid,
+  parseJsonObject,
+  requireString,
+} from "@/lib/api/validate";
 import { assertClientAccess } from "@/lib/api/ownership";
 import { toNoteTypeCode, toNoteTypeId } from "@/lib/api/note-type";
 import { fetchStaffNames, staffRef } from "@/lib/api/staff";
@@ -70,6 +74,98 @@ export const GET = apiRoute<Params>(
   },
   { roles: ["staff", "admin", "customer"] },
 );
+
+// この PR で作成に対応する note_type（reservation は 4.4・予約二重防御で、
+// item/discount/photo はリクエスト形が設計書未定義のため後続で対応）。
+const CREATABLE_NOTE_TYPES = ["head", "text"] as const;
+
+/**
+ * POST /api/v1/clients/{client_id}/notes — Be:note 作成（staff / admin）。
+ * 現状は head（新規来店ノード）と text（DM メッセージ）に対応する。
+ * Be:note は head を親とする木構造。
+ */
+export const POST = apiRoute<Params>(
+  async ({ req, auth, svc, params }) => {
+    assertUuid(params.client_id, "client_id");
+    if (!auth.staffId || !auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "スタッフ情報が取得できません。");
+    }
+
+    const body = await parseJsonObject(req);
+
+    const noteTypeCode = String(body.note_type);
+    toNoteTypeId(noteTypeCode); // 既知の note_type か検証（不正なら INVALID_PARAMS）。
+    if (!(CREATABLE_NOTE_TYPES as readonly string[]).includes(noteTypeCode)) {
+      throw new ApiError(
+        "INVALID_PARAMS",
+        "作成に対応しているのは note_type=head / text です（reservation 等は今後対応）。",
+      );
+    }
+
+    const futureFlg = requireOptionalBool(body.future_flg, "future_flg") ?? false;
+
+    // p_note_id（親 head）。head は親を持てない。text は任意（指定時は同一顧客の存在を検証）。
+    let pNoteId: string | null = null;
+    if (noteTypeCode === "head") {
+      if (body.p_note_id != null) {
+        throw new ApiError("INVALID_PARAMS", "head は p_note_id を指定できません。");
+      }
+    } else if (body.p_note_id != null) {
+      pNoteId = assertUuid(String(body.p_note_id), "p_note_id");
+      const { data: parent, error: parentError } = await svc
+        .from("t_be_note")
+        .select("note_id")
+        .eq("note_id", pNoteId)
+        .eq("client_id", params.client_id)
+        .eq("delete_flg", false)
+        .maybeSingle();
+      if (parentError) {
+        throw new ApiError("INTERNAL_ERROR", "親ノートの確認に失敗しました。");
+      }
+      if (!parent) {
+        throw new ApiError("INVALID_PARAMS", "親ノート（p_note_id）が見つかりません。");
+      }
+    }
+
+    const insert: Record<string, unknown> = {
+      p_note_id: pNoteId,
+      note_type: toNoteTypeId(noteTypeCode),
+      salon_id: auth.salonId,
+      client_id: params.client_id,
+      responsible: auth.staffId,
+      future_flg: futureFlg,
+    };
+    if (noteTypeCode === "text") {
+      insert.is_client = false; // staff/admin 作成の DM（顧客発はモバイル側）。
+      insert.text = requireString(body.text, "text", 300);
+      insert.read_flg = false; // 受信側（顧客）未読。
+    }
+
+    const { data: created, error } = await svc
+      .from("t_be_note")
+      .insert(insert)
+      .select("note_id")
+      .single();
+    if (error || !created) {
+      throw new ApiError("INTERNAL_ERROR", "Be:note の作成に失敗しました。");
+    }
+
+    return ok({ note_id: created.note_id }, 201);
+  },
+  { roles: ["staff", "admin"] },
+);
+
+/** JSON 真偽値（未指定は undefined、非 boolean は INVALID_PARAMS）。 */
+function requireOptionalBool(
+  v: unknown,
+  field: string,
+): boolean | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "boolean") {
+    throw new ApiError("INVALID_PARAMS", `${field} は true / false で指定してください。`);
+  }
+  return v;
+}
 
 /** head の直下 children を取得し、p_note_id ごとに要約してまとめる。 */
 async function fetchChildren(
