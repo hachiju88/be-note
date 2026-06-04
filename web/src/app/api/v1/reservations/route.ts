@@ -6,10 +6,8 @@ import { parsePagination } from "@/lib/api/pagination";
 import {
   assertUuid,
   optionalDateString,
-  optionalString,
   optionalUuid,
   parseJsonObject,
-  requireInt,
   requireIsoDatetime,
   requireString,
   requireUuid,
@@ -19,7 +17,11 @@ import {
   jstDateStartUtc,
   todayJst,
 } from "@/lib/api/datetime";
-import { assertReservationStatus } from "@/lib/api/reservation";
+import {
+  assertReservationStatus,
+  mapReservationRpcError,
+  parseMenuList,
+} from "@/lib/api/reservation";
 import { fetchStaffNames, staffRef } from "@/lib/api/staff";
 
 /**
@@ -167,23 +169,7 @@ export const POST = apiRoute(
     const { data, error } = await svc.rpc("create_immediate_reservation", {
       payload,
     });
-    if (error) {
-      // RPC は P0001 + メッセージで種別を伝える。
-      const message = error.message ?? "";
-      if (error.code === "P0001" && message.includes("DOUBLE_BOOKING")) {
-        throw new ApiError(
-          "DOUBLE_BOOKING",
-          "指定の時間帯はすでに予約が入っています。",
-        );
-      }
-      if (error.code === "P0001" && message.includes("INVALID_REFERENCE")) {
-        throw new ApiError(
-          "INVALID_PARAMS",
-          "client_id / staff_id / slot_id が存在しません。",
-        );
-      }
-      throw new ApiError("INTERNAL_ERROR", "予約の作成に失敗しました。");
-    }
+    if (error) mapReservationRpcError(error);
     const noteId = (data as { note_id?: string } | null)?.note_id;
     if (!noteId) {
       throw new ApiError("INTERNAL_ERROR", "予約の作成に失敗しました。");
@@ -192,31 +178,6 @@ export const POST = apiRoute(
   },
   { roles: ["staff", "admin"] },
 );
-
-/** menu_list（任意配列）を検証して RPC 用に整形する。 */
-function parseMenuList(v: unknown): unknown[] {
-  if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) {
-    throw new ApiError("INVALID_PARAMS", "menu_list は配列で指定してください。");
-  }
-  return v.map((raw, i) => {
-    if (typeof raw !== "object" || raw === null) {
-      throw new ApiError(
-        "INVALID_PARAMS",
-        `menu_list[${i}] はオブジェクトで指定してください。`,
-      );
-    }
-    const m = raw as Record<string, unknown>;
-    return {
-      menu_master_id: optionalUuid(m.menu_master_id, `menu_list[${i}].menu_master_id`),
-      menu_name: requireString(m.menu_name, `menu_list[${i}].menu_name`, 20),
-      kinds: optionalString(m.kinds, `menu_list[${i}].kinds`, 20),
-      staff_id: optionalUuid(m.staff_id, `menu_list[${i}].staff_id`),
-      memo: optionalString(m.memo, `menu_list[${i}].memo`, 100),
-      price: requireInt(m.price, `menu_list[${i}].price`, 0),
-    };
-  });
-}
 
 /** 埋め込み t_be_note（多対一＝オブジェクト想定）から client_id を取り出す。 */
 function embeddedClientId(embedded: unknown): string | null {
