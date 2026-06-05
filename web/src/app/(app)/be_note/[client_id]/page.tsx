@@ -184,6 +184,12 @@ export default function BeNotePage() {
   useEffect(() => {
     let cancelled = false;
     async function fetchAll() {
+      // clientId 切替時に前の顧客データをクリアしてから新規取得する。
+      setHeadNotes([]);
+      setSelectedHeadId(null);
+      setVisitDetail(null);
+      setDmMessages([]);
+      setFutureNotes([]);
       setLoading(true);
       setError(null);
       try {

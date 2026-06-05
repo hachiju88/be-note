@@ -202,12 +202,12 @@ export default function BoardPage() {
                         <div className="text-xs font-medium text-gray-900">{staffName}</div>
                       </td>
                       {tasks.map((task) => {
+                        const taskIdx = tasks.findIndex((t) => t.task_id === task.task_id);
                         const card = staffCards.find(
                           (c) =>
                             c.currentTaskId === task.task_id ||
                             (c.currentTaskId === null && taskIdx === 0)
                         );
-                        const taskIdx = tasks.findIndex((t) => t.task_id === task.task_id);
                         const nextTask = tasks[taskIdx + 1];
                         return (
                           <td

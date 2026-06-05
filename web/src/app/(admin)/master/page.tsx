@@ -133,7 +133,9 @@ export default function MasterPage() {
 
   async function handleDelete(row: Row) {
     const idField = ID_FIELD[activeKey];
-    const id = String(row[idField] ?? "");
+    const id = activeKey === "staff-skills"
+      ? `${row.staff_id}-${row.task_id}`
+      : String(row[idField] ?? "");
     if (!id) return;
     if (!confirm("削除してよろしいですか？")) return;
 
@@ -239,7 +241,9 @@ export default function MasterPage() {
                   )}
                   {rows.map((row, i) => {
                     const idField = ID_FIELD[activeKey];
-                    const rowId = String(row[idField] ?? i);
+                    const rowId = activeKey === "staff-skills"
+                      ? `${row.staff_id}-${row.task_id}`
+                      : String(row[idField] ?? i);
                     return (
                       <tr key={rowId} className="hover:bg-gray-50">
                         {columns.map((col) => (
