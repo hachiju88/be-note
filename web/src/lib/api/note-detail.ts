@@ -55,7 +55,7 @@ export type ParsedDetails = {
 export function parseNoteDetails(
   code: DetailNoteType,
   body: Record<string, unknown>,
-  defaultStaffId: string,
+  defaultStaffId: string | null,
 ): ParsedDetails {
   const key = LIST_KEY[code];
   const raw = body[key];

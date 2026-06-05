@@ -48,6 +48,7 @@ export const GET = apiRoute<Params>(
       responsible: staffRef(note.responsible, responsibleNames),
       creation_datetime: note.creation_datetime,
       future_flg: note.future_flg,
+      is_client: note.is_client,  // text/photo DM の送信者識別（customer=true）。
     };
 
     const detail = await buildDetail(svc, note, typeCode, isCustomer);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
-import { apiFetch, todayJst, toJstTime } from "@/lib/apiFetch";
+import { apiFetch, todayJst } from "@/lib/apiFetch";
 
 // 営業時間 9:00〜20:00、15分刻み
 const START_HOUR = 9;
@@ -258,12 +258,7 @@ export default function ReservePage() {
                               {r.clientName}
                             </div>
                             <div className="text-xs text-indigo-600 leading-tight">
-                              {toJstTime(
-                                new Date(
-                                  new Date(selectedDate + "T00:00:00+09:00").getTime() +
-                                    (START_HOUR * 60 + r.startSlot * SLOT_MIN) * 60_000
-                                ).toISOString()
-                              )}
+                              {slotToLabel(r.startSlot)}〜{slotToLabel(r.startSlot + r.durationSlots)}
                             </div>
                             <div className="text-xs text-gray-500 truncate leading-tight">
                               {r.menu}

@@ -103,14 +103,41 @@ const CREATABLE_NOTE_TYPES = [
 export const POST = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
     assertUuid(params.client_id, "client_id");
-    if (!auth.staffId || !auth.salonId) {
+
+    const isCustomer = auth.role === "customer";
+
+    // customer は自分の client_id のみ操作可。
+    if (isCustomer) {
+      assertClientAccess(auth, params.client_id);
+    } else if (!auth.staffId || !auth.salonId) {
       throw new ApiError("INTERNAL_ERROR", "スタッフ情報が取得できません。");
     }
+
+    // customer の salonId を t_client_salon から解決（auth.salonId は null）。
+    let salonId = auth.salonId;
+    if (!salonId && auth.clientId) {
+      const { data } = await svc
+        .from("t_client_salon")
+        .select("salon_id")
+        .eq("client_id", auth.clientId)
+        .limit(1)
+        .maybeSingle();
+      salonId = data?.salon_id ?? null;
+    }
+    if (!salonId) throw new ApiError("FORBIDDEN", "サロン情報が取得できません。");
 
     const body = await parseJsonObject(req);
 
     const noteTypeCode = String(body.note_type);
     toNoteTypeId(noteTypeCode); // 既知の note_type か検証（不正なら INVALID_PARAMS）。
+
+    // customer は text / photo のみ作成可。
+    if (isCustomer && noteTypeCode !== "text" && noteTypeCode !== "photo") {
+      throw new ApiError(
+        "FORBIDDEN",
+        "顧客が作成できる note_type は text / photo のみです。",
+      );
+    }
     if (!(CREATABLE_NOTE_TYPES as readonly string[]).includes(noteTypeCode)) {
       throw new ApiError(
         "INVALID_PARAMS",
@@ -159,21 +186,55 @@ export const POST = apiRoute<Params>(
 
     // item / discount / photo: ノード＋明細を RPC で原子的に作成する。
     if (isDetailNoteType(noteTypeCode)) {
+      // customer は photo のみ（text/photo 制限は上で検証済み）。
+      // スタッフ属性の偽装を防ぐため staff_id は明示指定不可（明細に staff_id を付けさせない）。
+      if (isCustomer) {
+        const list = body.photo_list;
+        if (Array.isArray(list)) {
+          for (const entry of list) {
+            if (
+              entry &&
+              typeof entry === "object" &&
+              "staff_id" in entry &&
+              (entry as Record<string, unknown>).staff_id != null
+            ) {
+              throw new ApiError(
+                "FORBIDDEN",
+                "顧客は写真に staff_id を指定できません。",
+              );
+            }
+            // storage_path は自分の DM パス（dm/{client_id}/…）に限定する。
+            // Storage の RLS と同じ制約をサーバ側でも担保する。
+            const sp = (entry as Record<string, unknown>)?.storage_path;
+            if (typeof sp === "string" && !sp.startsWith(`dm/${params.client_id}/`)) {
+              throw new ApiError(
+                "FORBIDDEN",
+                "写真の保存先が不正です（自分の DM フォルダのみ指定できます）。",
+              );
+            }
+          }
+        }
+      }
+
       const { details, staffIds } = parseNoteDetails(
         noteTypeCode,
         body,
-        auth.staffId, // 明細 staff_id 省略時の既定（ノードの主担当）。
+        auth.staffId ?? null, // customer は staffId が null。
       );
-      await assertStaffInSalon(svc, staffIds, auth.salonId);
+      if (staffIds.length > 0) {
+        await assertStaffInSalon(svc, staffIds, salonId);
+      }
 
       const { data, error } = await svc.rpc("create_note_with_details", {
         payload: {
           note_type_id: toNoteTypeId(noteTypeCode),
           p_note_id: pNoteId, // 非 head は上で必須・head 検証済み。
-          salon_id: auth.salonId,
+          salon_id: salonId,
           client_id: params.client_id,
-          responsible: auth.staffId,
+          responsible: auth.staffId ?? null, // customer は null。
           future_flg: futureFlg,
+          // photo は送信者識別が必要（customer 発=true）。item/discount は null。
+          is_client: noteTypeCode === "photo" ? isCustomer : null,
           details,
         },
       });
@@ -189,15 +250,15 @@ export const POST = apiRoute<Params>(
     const insert: Record<string, unknown> = {
       p_note_id: pNoteId,
       note_type: toNoteTypeId(noteTypeCode),
-      salon_id: auth.salonId,
+      salon_id: salonId,
       client_id: params.client_id,
-      responsible: auth.staffId,
+      responsible: auth.staffId ?? null, // customer は null。
       future_flg: futureFlg,
     };
     if (noteTypeCode === "text") {
-      insert.is_client = false; // staff/admin 作成の DM（顧客発はモバイル側）。
+      insert.is_client = isCustomer; // customer 発=true、staff/admin 発=false。
       insert.text = requireString(body.text, "text", 300);
-      insert.read_flg = false; // 受信側（顧客）未読。
+      insert.read_flg = false;
     }
 
     const { data: created, error } = await svc
@@ -211,7 +272,7 @@ export const POST = apiRoute<Params>(
 
     return ok({ note_id: created.note_id }, 201);
   },
-  { roles: ["staff", "admin"] },
+  { roles: ["staff", "admin", "customer"] },
 );
 
 /** JSON 真偽値（未指定は undefined、非 boolean は INVALID_PARAMS）。 */
