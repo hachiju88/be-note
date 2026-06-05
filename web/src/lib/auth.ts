@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 /**
  * 認証・ロール解決の共通ヘルパー（Server 専用）。
@@ -43,7 +44,10 @@ export const getAuthContext = cache(
     if (!user) return null;
 
     // staff レコードを引き、権限（is_admin）を導出する。
-    const { data: staff, error: staffError } = await supabase
+    // カスタムアクセストークンフック未設定環境でも動作するよう service_role で読む
+    // （RLS バイパス。user_id 絞り込みで本人性は保証）。
+    const serviceClient = createServiceClient();
+    const { data: staff, error: staffError } = await serviceClient
       .from("t_staff")
       .select("staff_id, staff_name, salon_id, is_admin")
       .eq("user_id", user.id)
