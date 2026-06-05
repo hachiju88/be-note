@@ -76,7 +76,8 @@ create table t_task (
     salon_id    uuid         not null references t_salon,
     task_name   varchar(20)  not null,    -- 'check_in' | 'wash' | 'cut' ...
     task_order  integer      not null,    -- 列の表示順
-    role_limit  varchar(10)  default null -- NULL=制限なし | 'stylist'=position が stylist のみ可
+    role_limit  varchar(10)  default null, -- NULL=制限なし | 'stylist'=position が stylist のみ可
+    delete_flg  boolean      not null default false  -- 論理削除（t_staff_skill / t_reservation.current_task_id が FK 参照するため物理削除しない）
 );
 
 -- スタッフ可能タスク（連関テーブル・物理削除）------------------
