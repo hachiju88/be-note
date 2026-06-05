@@ -1,68 +1,110 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import { AlertTriangle, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 type Material = {
-  id: string;
-  name: string;
+  material_id: string;
+  material_name: string;
   unit: string;
-  stock: number;
-  reorderPoint: number;
+  current_stock: number;
+  reorder_point: number;
+  low_stock: boolean;
 };
-
-const INITIAL_MATERIALS: Material[] = [
-  { id: "m1", name: "カラー剤 アッシュブラウン", unit: "本", stock: 3, reorderPoint: 5 },
-  { id: "m2", name: "カラー剤 ナチュラルブラック", unit: "本", stock: 12, reorderPoint: 5 },
-  { id: "m3", name: "パーマ液 1剤", unit: "本", stock: 2, reorderPoint: 4 },
-  { id: "m4", name: "トリートメント剤", unit: "kg", stock: 1.5, reorderPoint: 2 },
-  { id: "m5", name: "シャンプー業務用", unit: "L", stock: 8, reorderPoint: 3 },
-  { id: "m6", name: "アルミホイル", unit: "巻", stock: 6, reorderPoint: 2 },
-  { id: "m7", name: "使い捨て手袋", unit: "箱", stock: 1, reorderPoint: 3 },
-];
 
 type TxType = "in" | "out" | "adjust";
 const TX_LABEL: Record<TxType, string> = { in: "入庫", out: "出庫", adjust: "棚卸調整" };
 
 export default function MaterialPage() {
-  const [materials, setMaterials] = useState(INITIAL_MATERIALS);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [lowOnly, setLowOnly] = useState(false);
   const [selected, setSelected] = useState<Material | null>(null);
   const [txType, setTxType] = useState<TxType>("in");
   const [txQty, setTxQty] = useState("");
   const [txMemo, setTxMemo] = useState("");
+  const [txLoading, setTxLoading] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
 
-  const displayed = lowOnly
-    ? materials.filter((m) => m.stock <= m.reorderPoint)
-    : materials;
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  function handleTransaction() {
-    const qty = parseFloat(txQty);
-    if (!selected || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0)) return;
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await apiFetch(
+          `/api/v1/materials${lowOnly ? "?low_stock_only=true" : ""}`
+        );
+        if (!res.ok) throw new Error("材料一覧の取得に失敗しました。");
+        const json = await res.json();
+        if (!cancelled) { setMaterials(json.data ?? []); setError(null); }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "不明なエラーが発生しました。");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [refreshKey, lowOnly]);
 
-    const newMaterials = materials.map((m) => {
-      if (m.id !== selected.id) return m;
-      const delta = txType === "in" ? qty : txType === "out" ? -qty : qty - m.stock;
-      return { ...m, stock: Math.max(0, m.stock + delta) };
-    });
-    setMaterials(newMaterials);
-    // 選択中材料の在庫表示を最新値に同期する
-    const updated = newMaterials.find((m) => m.id === selected.id);
-    if (updated) setSelected(updated);
-
-    setTxQty("");
-    setTxMemo("");
+  function triggerRefresh() {
+    setLoading(true);
+    setError(null);
+    setRefreshKey((k) => k + 1);
   }
 
-  const lowCount = materials.filter((m) => m.stock <= m.reorderPoint).length;
+  async function handleTransaction() {
+    if (!selected) return;
+    const qty = parseFloat(txQty);
+    if (isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0)) return;
+    setTxLoading(true);
+    setTxError(null);
+    try {
+      const res = await apiFetch(
+        `/api/v1/materials/${selected.material_id}/transactions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            transaction_type: txType,
+            quantity: qty,
+            memo: txMemo.trim() || null,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message ?? "登録に失敗しました。");
+      }
+      setTxQty("");
+      setTxMemo("");
+      triggerRefresh();
+    } catch (e) {
+      setTxError(e instanceof Error ? e.message : "登録に失敗しました。");
+    } finally {
+      setTxLoading(false);
+    }
+  }
+
+  const displayed = lowOnly
+    ? materials.filter((m) => m.low_stock)
+    : materials;
+
+  const lowCount = materials.filter((m) => m.low_stock).length;
 
   const qty = parseFloat(txQty);
-  const txQtyInvalid = txQty === "" || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0);
+  const txQtyInvalid =
+    txQty === "" || isNaN(qty) || (txType === "adjust" ? qty < 0 : qty <= 0);
 
   return (
     <div className="flex min-h-screen flex-col">
-      <AppHeader title="材料管理" navLinks={[{ label: "← メニュー", href: "/menu" }]} />
+      <AppHeader
+        title="材料管理"
+        navLinks={[{ label: "← メニュー", href: "/menu" }]}
+      />
 
       <div className="flex flex-1 gap-4 p-6">
         {/* 材料一覧 */}
@@ -91,36 +133,66 @@ export default function MaterialPage() {
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <th className="px-4 py-3">材料名</th>
-                  <th className="px-4 py-3 text-right">現在庫</th>
-                  <th className="px-4 py-3 text-right">発注点</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {displayed.map((m) => {
-                  const isLow = m.stock <= m.reorderPoint;
-                  return (
+          {/* エラー / ローディング */}
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+              <button onClick={triggerRefresh} className="ml-3 underline">
+                再試行
+              </button>
+            </div>
+          )}
+          {loading && (
+            <p className="py-12 text-center text-sm text-gray-400">読み込み中…</p>
+          )}
+
+          {!loading && (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <th className="px-4 py-3">材料名</th>
+                    <th className="px-4 py-3 text-right">現在庫</th>
+                    <th className="px-4 py-3 text-right">発注点</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {displayed.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="py-12 text-center text-sm text-gray-400"
+                      >
+                        材料がありません
+                      </td>
+                    </tr>
+                  )}
+                  {displayed.map((m) => (
                     <tr
-                      key={m.id}
+                      key={m.material_id}
                       onClick={() => setSelected(m)}
-                      className={`cursor-pointer hover:bg-gray-50 ${selected?.id === m.id ? "bg-indigo-50" : ""}`}
+                      className={`cursor-pointer hover:bg-gray-50 ${
+                        selected?.material_id === m.material_id ? "bg-indigo-50" : ""
+                      }`}
                     >
-                      <td className="px-4 py-3 font-medium text-gray-800">{m.name}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">
+                        {m.material_name}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`font-mono font-semibold ${isLow ? "text-red-600" : "text-gray-800"}`}>
-                          {m.stock} {m.unit}
+                        <span
+                          className={`font-mono font-semibold ${
+                            m.low_stock ? "text-red-600" : "text-gray-800"
+                          }`}
+                        >
+                          {m.current_stock} {m.unit}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-gray-400">
-                        {m.reorderPoint} {m.unit}
+                        {m.reorder_point} {m.unit}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {isLow && (
+                        {m.low_stock && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">
                             <AlertTriangle size={10} />
                             要発注
@@ -128,11 +200,11 @@ export default function MaterialPage() {
                         )}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* 入出庫パネル */}
@@ -143,9 +215,14 @@ export default function MaterialPage() {
             {selected ? (
               <div className="flex flex-col gap-3">
                 <div className="rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800">
-                  {selected.name}
+                  {selected.material_name}
                   <span className="ml-2 font-mono text-xs text-indigo-500">
-                    現在庫: {selected.stock} {selected.unit}
+                    {
+                      // 最新の在庫を表示（再取得後に materials から引く）
+                      (materials.find((m) => m.material_id === selected.material_id)
+                        ?.current_stock ?? selected.current_stock)
+                    }{" "}
+                    {selected.unit}
                   </span>
                 </div>
 
@@ -179,22 +256,27 @@ export default function MaterialPage() {
                   onChange={(e) => setTxMemo(e.target.value)}
                   className="rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
+
+                {txError && (
+                  <p className="text-xs text-red-600">{txError}</p>
+                )}
+
                 <button
                   onClick={handleTransaction}
-                  disabled={txQtyInvalid}
+                  disabled={txQtyInvalid || txLoading}
                   className="rounded bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
                 >
-                  登録
+                  {txLoading ? "登録中…" : "登録"}
                 </button>
               </div>
             ) : (
-              <p className="text-sm text-gray-400">左の一覧から材料を選択してください</p>
+              <p className="text-sm text-gray-400">
+                左の一覧から材料を選択してください
+              </p>
             )}
           </div>
         </div>
       </div>
-
-      <p className="px-6 pb-4 text-xs text-gray-400">※ モックアップ。ダミーデータを表示しています。</p>
     </div>
   );
 }
