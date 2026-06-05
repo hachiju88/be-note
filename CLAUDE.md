@@ -130,8 +130,25 @@ npm run lint       # ESLint
 - ルーティングは Route Groups：`(auth)`（未認証）/ `(app)`（staff・admin）/ `(admin)`（admin）。
 - Supabase クライアントは `src/lib/supabase/{client,server}.ts`（`@supabase/ssr`）。Next.js 16 では `cookies()` は async。
 - 環境変数は `web/.env.local`（雛形は `web/.env.example`）。`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`。
-- 認証/ロールガード・各画面ロジックは未実装（雛形のみ）。各画面は `ScreenPlaceholder` を表示。
+- 認証/ロールガード・各画面ロジックは M1/M2 で実装済み。各画面は M3 で実 API に結線済み。
 - `web/AGENTS.md`：この Next.js はブレイキングチェンジあり。コード前に `node_modules/next/dist/docs/` を参照。
+
+**mobile/（React Native・Expo・TypeScript）**
+```
+cd mobile
+npm install             # 依存インストール
+npx expo start          # 開発サーバ（QR コードで実機接続）
+npx expo start --android
+npx expo start --ios
+npm run lint            # ESLint
+npm test                # Jest
+```
+- Expo Router（ファイルベースルーティング）：`(auth)` / `(app)` で認証別に分離。
+- Supabase クライアントは `src/lib/supabase.ts`（SecureStore でセッション永続化）。
+- 環境変数は `mobile/.env.local`（雛形は `mobile/.env.example`）。
+  `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` / `EXPO_PUBLIC_API_BASE_URL`。
+- `EXPO_PUBLIC_API_BASE_URL` は開発時に `npm run dev` を起動した PC の LAN アドレス + `:3000`。
+- 画面構成: Be:note（来店履歴・閲覧）/ 予約（一覧・リクエスト申込・キャンセル）/ DM（交換ノート）。
 
 **supabase/（PostgreSQL・DDL）**
 ```
