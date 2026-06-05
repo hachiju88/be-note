@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch, todayJst, toJstDatetime, generateUuid } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -60,57 +60,61 @@ export default function ReservationsScreen() {
   const [reqMenu, setReqMenu] = useState("");
   const [reqDate, setReqDate] = useState("");
   const [reqLoading, setReqLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!user) return;
+    let active = true;
     supabase
       .from("t_client")
       .select("client_id")
       .eq("user_id", user.id)
       .eq("delete_flg", false)
       .maybeSingle()
-      .then(({ data }) => setClientId(data?.client_id ?? null));
+      .then(({ data }) => { if (active) setClientId(data?.client_id ?? null); });
+    return () => { active = false; };
   }, [user]);
 
-  const fetchReservations = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      // 顧客の Be:note から予約ノードを取得（過去 + 未来）
-      const res = await apiFetch(
-        `/api/v1/clients/${clientId}/notes?per_page=30`
-      );
-      if (!res.ok) throw new Error("予約の取得に失敗しました。");
-      const json = await res.json();
-      const heads: HeadNote[] = json.data ?? [];
-      const resList: Reservation[] = heads
-        .flatMap((h) =>
-          h.children
-            .filter((c) => c.note_type === "reservation")
-            .map((c) => ({
-              note_id: c.note_id,
-              reservation_start: c.reservation_start ?? "",
-              reservation_end: "",
-              main_menu: c.main_menu ?? "",
-              status: c.status ?? "",
-              staff: null,
-            }))
-        )
-        .sort((a, b) =>
-          a.reservation_start < b.reservation_start ? 1 : -1
-        );
-      setReservations(resList);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "不明なエラーが発生しました。");
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-
   useEffect(() => {
-    fetchReservations();
-  }, [fetchReservations]);
+    if (!clientId) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        // 顧客の Be:note から予約ノードを取得（過去 + 未来）
+        const res = await apiFetch(
+          `/api/v1/clients/${clientId}/notes?per_page=30`
+        );
+        if (!res.ok) throw new Error("予約の取得に失敗しました。");
+        const json = await res.json();
+        const heads: HeadNote[] = json.data ?? [];
+        const resList: Reservation[] = heads
+          .flatMap((h) =>
+            h.children
+              .filter((c) => c.note_type === "reservation")
+              .map((c) => ({
+                note_id: c.note_id,
+                reservation_start: c.reservation_start ?? "",
+                reservation_end: "",
+                main_menu: c.main_menu ?? "",
+                status: c.status ?? "",
+                staff: null,
+              }))
+          )
+          .sort((a, b) =>
+            a.reservation_start < b.reservation_start ? 1 : -1
+          );
+        if (!cancelled) setReservations(resList);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "不明なエラーが発生しました。");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [clientId, refreshKey]);
 
   async function handleCancel(noteId: string) {
     Alert.alert("キャンセル確認", "この予約をキャンセルしますか？", [
@@ -133,7 +137,7 @@ export default function ReservationsScreen() {
               body?.error?.message ?? "キャンセルに失敗しました。"
             );
           } else {
-            fetchReservations();
+            setRefreshKey((k) => k + 1);
           }
         },
       },

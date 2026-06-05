@@ -1,13 +1,12 @@
 import {
   ActivityIndicator,
-  FlatList,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch, toJstDatetime } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -53,10 +52,12 @@ export default function BeNoteScreen() {
   const [selectedHead, setSelectedHead] = useState<HeadNote | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // customer の client_id を t_client から取得
   useEffect(() => {
     if (!user) return;
+    let active = true;
     supabase
       .from("t_client")
       .select("client_id")
@@ -64,39 +65,44 @@ export default function BeNoteScreen() {
       .eq("delete_flg", false)
       .maybeSingle()
       .then(({ data }) => {
-        setClientId(data?.client_id ?? null);
+        if (active) setClientId(data?.client_id ?? null);
       });
+    return () => { active = false; };
   }, [user]);
 
-  const fetchNotes = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [clientRes, notesRes] = await Promise.all([
-        apiFetch(`/api/v1/clients/${clientId}`),
-        apiFetch(`/api/v1/clients/${clientId}/notes?future_flg=false&per_page=20`),
-      ]);
-      if (clientRes.ok) {
-        const j = await clientRes.json();
-        setClientInfo(j.data ?? null);
-      }
-      if (notesRes.ok) {
-        const j = await notesRes.json();
-        const rows: HeadNote[] = j.data ?? [];
-        setHeadNotes(rows);
-        if (rows.length > 0) setSelectedHead(rows[0]);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "データの取得に失敗しました。");
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-
   useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
+    if (!clientId) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [clientRes, notesRes] = await Promise.all([
+          apiFetch(`/api/v1/clients/${clientId}`),
+          apiFetch(`/api/v1/clients/${clientId}/notes?future_flg=false&per_page=20`),
+        ]);
+        if (cancelled) return;
+        if (clientRes.ok) {
+          const j = await clientRes.json();
+          if (!cancelled) setClientInfo(j.data ?? null);
+        }
+        if (notesRes.ok) {
+          const j = await notesRes.json();
+          const rows: HeadNote[] = j.data ?? [];
+          if (!cancelled) {
+            setHeadNotes(rows);
+            if (rows.length > 0) setSelectedHead(rows[0]);
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "データの取得に失敗しました。");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [clientId, refreshKey]);
 
   if (loading) {
     return (
@@ -110,7 +116,7 @@ export default function BeNoteScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity onPress={fetchNotes} style={styles.retryBtn}>
+        <TouchableOpacity onPress={() => setRefreshKey((k) => k + 1)} style={styles.retryBtn}>
           <Text style={styles.retryBtnText}>再試行</Text>
         </TouchableOpacity>
       </View>
@@ -188,32 +194,28 @@ export default function BeNoteScreen() {
         {headNotes.length === 0 && (
           <Text style={styles.emptyText}>来店履歴はありません。</Text>
         )}
-        <FlatList
-          data={headNotes}
-          keyExtractor={(item) => item.note_id}
-          scrollEnabled={false}
-          renderItem={({ item }) => {
-            const res = (item.children as (ReservationChild | OtherChild)[]).find(
-              (c): c is ReservationChild => c.note_type === "reservation"
-            );
-            return (
-              <TouchableOpacity
-                onPress={() => setSelectedHead(item)}
-                style={[
-                  styles.historyItem,
-                  selectedHead?.note_id === item.note_id && styles.historyItemActive,
-                ]}
-              >
-                <Text style={styles.historyDate}>
-                  {toJstDatetime(item.creation_datetime).slice(0, 10)}
-                </Text>
-                {res && (
-                  <Text style={styles.historyMenu}>{res.main_menu}</Text>
-                )}
-              </TouchableOpacity>
-            );
-          }}
-        />
+        {headNotes.map((item) => {
+          const res = (item.children as (ReservationChild | OtherChild)[]).find(
+            (c): c is ReservationChild => c.note_type === "reservation"
+          );
+          return (
+            <TouchableOpacity
+              key={item.note_id}
+              onPress={() => setSelectedHead(item)}
+              style={[
+                styles.historyItem,
+                selectedHead?.note_id === item.note_id && styles.historyItemActive,
+              ]}
+            >
+              <Text style={styles.historyDate}>
+                {toJstDatetime(item.creation_datetime).slice(0, 10)}
+              </Text>
+              {res && (
+                <Text style={styles.historyMenu}>{res.main_menu}</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </ScrollView>
   );

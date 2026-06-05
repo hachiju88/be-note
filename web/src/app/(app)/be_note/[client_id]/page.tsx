@@ -182,6 +182,7 @@ export default function BeNotePage() {
 
   // 初回: 顧客情報・past notes・future notes を並行取得
   useEffect(() => {
+    let cancelled = false;
     async function fetchAll() {
       setLoading(true);
       setError(null);
@@ -191,6 +192,8 @@ export default function BeNotePage() {
           apiFetch(`/api/v1/clients/${clientId}/notes?future_flg=false&per_page=20`),
           apiFetch(`/api/v1/clients/${clientId}/notes?future_flg=true&per_page=10`),
         ]);
+
+        if (cancelled) return;
 
         if (clientRes.ok) {
           const j = await clientRes.json();
@@ -222,12 +225,13 @@ export default function BeNotePage() {
           setFutureNotes(futures);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "データの取得に失敗しました。");
+        if (!cancelled) setError(e instanceof Error ? e.message : "データの取得に失敗しました。");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     fetchAll();
+    return () => { cancelled = true; };
     // selectedHeadId は初回のみ設定するため依存から除外
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
@@ -246,6 +250,8 @@ export default function BeNotePage() {
       .filter((c) => c.note_type === "text")
       .map((c) => c.note_id);
 
+    let cancelled = false;
+
     async function fetchDetail() {
       setDetailLoading(true);
       setVisitDetail(null);
@@ -258,7 +264,7 @@ export default function BeNotePage() {
           fetches.push(
             apiFetch(`/api/v1/clients/${clientId}/notes/${reservationChild.note_id}`)
               .then((r) => r.json())
-              .then((j) => setVisitDetail(j.data ?? null))
+              .then((j) => { if (!cancelled) setVisitDetail(j.data ?? null); })
               .catch(() => {})
           );
         }
@@ -274,6 +280,7 @@ export default function BeNotePage() {
                   .catch(() => null)
               )
             ).then((results) => {
+              if (cancelled) return;
               const msgs: DmMessage[] = results
                 .filter((r): r is DmMessage & { note_id: string } => !!r)
                 .sort((a, b) =>
@@ -286,11 +293,12 @@ export default function BeNotePage() {
 
         await Promise.all(fetches);
       } finally {
-        setDetailLoading(false);
+        if (!cancelled) setDetailLoading(false);
       }
     }
 
     fetchDetail();
+    return () => { cancelled = true; };
   }, [selectedHeadId, headNotes, clientId]);
 
   async function sendDm() {

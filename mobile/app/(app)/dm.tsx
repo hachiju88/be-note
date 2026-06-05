@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch, toJstDatetime } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -40,63 +40,68 @@ export default function DmScreen() {
 
   useEffect(() => {
     if (!user) return;
+    let active = true;
     supabase
       .from("t_client")
       .select("client_id")
       .eq("user_id", user.id)
       .eq("delete_flg", false)
       .maybeSingle()
-      .then(({ data }) => setClientId(data?.client_id ?? null));
+      .then(({ data }) => { if (active) setClientId(data?.client_id ?? null); });
+    return () => { active = false; };
   }, [user]);
 
-  const fetchDm = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      // 最新の head ノードを取得し、そのテキスト children を DM として表示する
-      const res = await apiFetch(
-        `/api/v1/clients/${clientId}/notes?future_flg=false&per_page=1`
-      );
-      if (!res.ok) throw new Error("データの取得に失敗しました。");
-      const json = await res.json();
-      const heads: HeadNote[] = json.data ?? [];
-      if (heads.length === 0) {
-        setLoading(false);
-        return;
-      }
-      const latestHead = heads[0];
-      setHeadNoteId(latestHead.note_id);
-
-      const textChildren = latestHead.children
-        .filter((c) => c.note_type === "text")
-        .map((c) => c.note_id);
-
-      const details = await Promise.all(
-        textChildren.slice(-20).map((noteId) =>
-          apiFetch(`/api/v1/clients/${clientId}/notes/${noteId}`)
-            .then((r) => r.json())
-            .then((j) => ({ note_id: noteId, ...j.data } as DmMessage))
-            .catch(() => null)
-        )
-      );
-      setMessages(
-        details
-          .filter((d): d is DmMessage => !!d)
-          .sort((a, b) =>
-            a.creation_datetime < b.creation_datetime ? -1 : 1
-          )
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "不明なエラーが発生しました。");
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId]);
-
   useEffect(() => {
-    fetchDm();
-  }, [fetchDm]);
+    if (!clientId) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        // 最新の head ノードを取得し、そのテキスト children を DM として表示する
+        const res = await apiFetch(
+          `/api/v1/clients/${clientId}/notes?future_flg=false&per_page=1`
+        );
+        if (!res.ok) throw new Error("データの取得に失敗しました。");
+        const json = await res.json();
+        const heads: HeadNote[] = json.data ?? [];
+        if (heads.length === 0) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const latestHead = heads[0];
+        if (!cancelled) setHeadNoteId(latestHead.note_id);
+
+        const textChildren = latestHead.children
+          .filter((c) => c.note_type === "text")
+          .map((c) => c.note_id);
+
+        const details = await Promise.all(
+          textChildren.slice(-20).map((noteId) =>
+            apiFetch(`/api/v1/clients/${clientId}/notes/${noteId}`)
+              .then((r) => r.json())
+              .then((j) => ({ note_id: noteId, ...j.data } as DmMessage))
+              .catch(() => null)
+          )
+        );
+        if (!cancelled) {
+          setMessages(
+            details
+              .filter((d): d is DmMessage => !!d)
+              .sort((a, b) =>
+                a.creation_datetime < b.creation_datetime ? -1 : 1
+              )
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "不明なエラーが発生しました。");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [clientId]);
 
   useEffect(() => {
     if (messages.length > 0) {
