@@ -114,7 +114,7 @@ export const POST = apiRoute<Params>(
     if (!(CREATABLE_NOTE_TYPES as readonly string[]).includes(noteTypeCode)) {
       throw new ApiError(
         "INVALID_PARAMS",
-        "作成に対応しているのは note_type=head / text です（reservation 等は今後対応）。",
+        "作成に対応している note_type は head / text / item / discount / photo です（reservation は POST /reservations を使用）。",
       );
     }
 

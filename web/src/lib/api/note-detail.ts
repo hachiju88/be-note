@@ -17,6 +17,23 @@ export function isDetailNoteType(code: string): code is DetailNoteType {
   return code === "item" || code === "discount" || code === "photo";
 }
 
+// PostgreSQL integer（int4）の範囲。price 列は integer のため、これを超える値は
+// アプリ層で 400 にする（RPC の ::integer キャストで 22003→500 になるのを防ぐ）。
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/** integer 列向けの整数（int4 範囲内）。範囲外は INVALID_PARAMS。 */
+function requireInt32(v: unknown, field: string): number {
+  const n = requireInt(v, field);
+  if (n < INT32_MIN || n > INT32_MAX) {
+    throw new ApiError(
+      "INVALID_PARAMS",
+      `${field} は ${INT32_MIN}〜${INT32_MAX} の範囲で指定してください。`,
+    );
+  }
+  return n;
+}
+
 const LIST_KEY: Record<DetailNoteType, string> = {
   item: "item_list",
   discount: "discount_list",
@@ -72,10 +89,10 @@ export function parseNoteDetails(
         item_name: requireString(e.item_name, `${prefix}.item_name`, 20),
         kinds: optionalString(e.kinds, `${prefix}.kinds`, 20),
         memo: optionalString(e.memo, `${prefix}.memo`, 100),
-        price: requireInt(e.price, `${prefix}.price`),
+        price: requireInt32(e.price, `${prefix}.price`),
       });
     } else if (code === "discount") {
-      const price = requireInt(e.price, `${prefix}.price`);
+      const price = requireInt32(e.price, `${prefix}.price`);
       if (price > 0) {
         // t_discount.check_discount_price（price <= 0）に対応。
         throw new ApiError(
