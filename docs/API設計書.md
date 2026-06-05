@@ -666,12 +666,19 @@ Query:
     }
   ],
   "by_menu": [
-    { "menu_name": "cut", "count": 8, "sales": 36000 }
+    { "menu_master_id": "0190a1b2-c3d4-7e80-c000-000000000001", "menu_name": "cut", "count": 8, "sales": 36000 }
   ]
 }
 ```
 
 > 集計元：`t_reservation`（`total` / `payment_method` / `staff_id` / `status`）、`t_menu`（スタッフ別・メニュー別）、`t_sold_item` / `t_discount`。CSV エクスポートは将来対応。
+>
+> 集計は DB 関数 `report_daily`（SQL `GROUP BY`）で行う（アプリ層で全件をロードせず、`max_rows` 上限による打ち切りを避けるため）。
+>
+> **集計仕様**：
+> - `cancel_count` は純粋なキャンセル（`status='cancelled'` かつ `no_show_flg=false`）。ノーショーは含めない。`no_show_count`（`no_show_flg=true`）と重複しない。
+> - `payment_breakdown` は `cash` / `card` / `qr` / `unknown` の順。`payment_method` が NULL の会計済み（異常系）は `unknown` に集約し、Σ`amount` = `sales_total` を保つ。
+> - `by_menu` は `menu_master_id` があれば master 単位で集約（改名による分裂・別名衝突を防ぐ）、無ければ `menu_name`（予約時点スナップショット）単位。`menu_master_id` はマスタ未紐付け時 `null`。
 
 ---
 
