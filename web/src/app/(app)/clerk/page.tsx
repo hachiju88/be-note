@@ -87,7 +87,7 @@ export default function ClerkPage() {
     if (selected.size === 0) return;
     setActionLoading(true);
     try {
-      await Promise.all(
+      const results = await Promise.all(
         [...selected].map((noteId) =>
           apiFetch(`/api/v1/reservations/${noteId}/status`, {
             method: "PATCH",
@@ -95,6 +95,10 @@ export default function ClerkPage() {
           })
         )
       );
+      // fetch は HTTP エラーで reject しないため、res.ok を明示チェックする。
+      if (results.some((res) => !res.ok)) {
+        throw new Error("一部のチェックインに失敗しました。");
+      }
       setSelected(new Set());
       triggerRefresh();
     } catch {

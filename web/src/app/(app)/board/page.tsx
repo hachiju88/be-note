@@ -203,7 +203,9 @@ export default function BoardPage() {
                       </td>
                       {tasks.map((task) => {
                         const taskIdx = tasks.findIndex((t) => t.task_id === task.task_id);
-                        const card = staffCards.find(
+                        // 同一スタッフ・同一工程に複数カードが乗りうるため filter で全件表示する
+                        // （current_task_id が null のカードは先頭工程列にまとめて表示）。
+                        const cellCards = staffCards.filter(
                           (c) =>
                             c.currentTaskId === task.task_id ||
                             (c.currentTaskId === null && taskIdx === 0)
@@ -215,35 +217,40 @@ export default function BoardPage() {
                             className="border-b border-r border-gray-200 p-1.5 align-top"
                             style={{ minHeight: "80px" }}
                           >
-                            {card && (
-                              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2">
-                                <Link
-                                  href={card.clientId ? `/be_note/${card.clientId}` : "#"}
-                                  className="block hover:opacity-80"
+                            <div className="flex flex-col gap-1.5">
+                              {cellCards.map((card) => (
+                                <div
+                                  key={card.noteId}
+                                  className="rounded-lg border border-indigo-200 bg-indigo-50 p-2"
                                 >
-                                  <div className="truncate text-xs font-semibold text-indigo-900">
-                                    {card.clientName}
-                                  </div>
-                                  <div className="mt-0.5 text-xs text-indigo-600">
-                                    {card.timeRange}
-                                  </div>
-                                  <div className="mt-0.5 truncate text-xs text-gray-500">
-                                    {card.menu}
-                                  </div>
-                                </Link>
-                                {nextTask && (
-                                  <button
-                                    onClick={() =>
-                                      handleAdvanceTask(card.noteId, nextTask.task_id)
-                                    }
-                                    disabled={updatingCard === card.noteId}
-                                    className="mt-1 w-full rounded border border-indigo-300 bg-white px-1 py-0.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                                  <Link
+                                    href={card.clientId ? `/be_note/${card.clientId}` : "#"}
+                                    className="block hover:opacity-80"
                                   >
-                                    {updatingCard === card.noteId ? "…" : "→ 次へ"}
-                                  </button>
-                                )}
-                              </div>
-                            )}
+                                    <div className="truncate text-xs font-semibold text-indigo-900">
+                                      {card.clientName}
+                                    </div>
+                                    <div className="mt-0.5 text-xs text-indigo-600">
+                                      {card.timeRange}
+                                    </div>
+                                    <div className="mt-0.5 truncate text-xs text-gray-500">
+                                      {card.menu}
+                                    </div>
+                                  </Link>
+                                  {nextTask && (
+                                    <button
+                                      onClick={() =>
+                                        handleAdvanceTask(card.noteId, nextTask.task_id)
+                                      }
+                                      disabled={updatingCard === card.noteId}
+                                      className="mt-1 w-full rounded border border-indigo-300 bg-white px-1 py-0.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-40"
+                                    >
+                                      {updatingCard === card.noteId ? "…" : "→ 次へ"}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </td>
                         );
                       })}

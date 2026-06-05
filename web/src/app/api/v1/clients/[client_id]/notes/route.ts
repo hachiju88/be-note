@@ -186,6 +186,36 @@ export const POST = apiRoute<Params>(
 
     // item / discount / photo: ノード＋明細を RPC で原子的に作成する。
     if (isDetailNoteType(noteTypeCode)) {
+      // customer は photo のみ（text/photo 制限は上で検証済み）。
+      // スタッフ属性の偽装を防ぐため staff_id は明示指定不可（明細に staff_id を付けさせない）。
+      if (isCustomer) {
+        const list = body.photo_list;
+        if (Array.isArray(list)) {
+          for (const entry of list) {
+            if (
+              entry &&
+              typeof entry === "object" &&
+              "staff_id" in entry &&
+              (entry as Record<string, unknown>).staff_id != null
+            ) {
+              throw new ApiError(
+                "FORBIDDEN",
+                "顧客は写真に staff_id を指定できません。",
+              );
+            }
+            // storage_path は自分の DM パス（dm/{client_id}/…）に限定する。
+            // Storage の RLS と同じ制約をサーバ側でも担保する。
+            const sp = (entry as Record<string, unknown>)?.storage_path;
+            if (typeof sp === "string" && !sp.startsWith(`dm/${params.client_id}/`)) {
+              throw new ApiError(
+                "FORBIDDEN",
+                "写真の保存先が不正です（自分の DM フォルダのみ指定できます）。",
+              );
+            }
+          }
+        }
+      }
+
       const { details, staffIds } = parseNoteDetails(
         noteTypeCode,
         body,
@@ -203,6 +233,8 @@ export const POST = apiRoute<Params>(
           client_id: params.client_id,
           responsible: auth.staffId ?? null, // customer は null。
           future_flg: futureFlg,
+          // photo は送信者識別が必要（customer 発=true）。item/discount は null。
+          is_client: noteTypeCode === "photo" ? isCustomer : null,
           details,
         },
       });
