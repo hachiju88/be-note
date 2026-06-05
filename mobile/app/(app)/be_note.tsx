@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { apiFetch, toJstDatetime } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { STATUS_LABEL } from "@/lib/reservationStatus";
 
 type ClientInfo = {
   client_id: string;
@@ -33,15 +34,6 @@ type HeadNote = {
   responsible: { staff_id: string; staff_name: string | null };
   creation_datetime: string;
   children: (ReservationChild | OtherChild)[];
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "下書き",
-  confirmed: "予約済",
-  checked_in: "来店",
-  in_progress: "施術中",
-  done: "会計済",
-  cancelled: "キャンセル",
 };
 
 export default function BeNoteScreen() {

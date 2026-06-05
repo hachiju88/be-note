@@ -203,7 +203,9 @@ export default function BoardPage() {
                       </td>
                       {tasks.map((task) => {
                         const card = staffCards.find(
-                          (c) => c.currentTaskId === task.task_id
+                          (c) =>
+                            c.currentTaskId === task.task_id ||
+                            (c.currentTaskId === null && taskIdx === 0)
                         );
                         const taskIdx = tasks.findIndex((t) => t.task_id === task.task_id);
                         const nextTask = tasks[taskIdx + 1];

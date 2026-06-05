@@ -1,6 +1,11 @@
 import { getBearerToken } from "./supabase";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
+if (!API_BASE) {
+  console.error(
+    "[apiFetch] EXPO_PUBLIC_API_BASE_URL が未設定です。mobile/.env.local を確認してください。",
+  );
+}
 
 /**
  * /api/v1 への認証付き fetch ラッパー（モバイル用）。

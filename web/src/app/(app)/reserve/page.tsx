@@ -261,7 +261,7 @@ export default function ReservePage() {
                               {toJstTime(
                                 new Date(
                                   new Date(selectedDate + "T00:00:00+09:00").getTime() +
-                                    r.startSlot * SLOT_MIN * 60_000
+                                    (START_HOUR * 60 + r.startSlot * SLOT_MIN) * 60_000
                                 ).toISOString()
                               )}
                             </div>

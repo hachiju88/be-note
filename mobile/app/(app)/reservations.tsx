@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -9,9 +10,10 @@ import {
   View,
 } from "react-native";
 import { useEffect, useState } from "react";
-import { apiFetch, todayJst, toJstDatetime, generateUuid } from "@/lib/apiFetch";
+import { apiFetch, toJstDatetime, generateUuid } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { STATUS_LABEL, STATUS_COLOR } from "@/lib/reservationStatus";
 
 type Reservation = {
   note_id: string;
@@ -27,28 +29,20 @@ type HeadNote = {
   children: { note_id: string; note_type: string; reservation_start?: string; main_menu?: string; status?: string }[];
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: "下書き",
-  requested: "リクエスト申込中",
-  pending: "保留中",
-  confirmed: "予約済",
-  checked_in: "来店",
-  in_progress: "施術中",
-  done: "会計済",
-  cancelled: "キャンセル",
-  rejected: "却下",
+type MenuMaster = {
+  menu_master_id: string;
+  menu_name: string;
+  base_price: number;
+  duration_minutes: number;
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  confirmed: "#3b82f6",
-  checked_in: "#f59e0b",
-  in_progress: "#22c55e",
-  done: "#94a3b8",
-  cancelled: "#ef4444",
-  requested: "#8b5cf6",
-  pending: "#f97316",
-  default: "#94a3b8",
-};
+/** "YYYY-MM-DD HH:MM" 形式（JST）を UTC ISO 文字列に変換する。 */
+function parseJstToIso(jstStr: string): string | null {
+  const m = jstStr.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+  if (!m) return null;
+  const d = new Date(`${m[1]}T${m[2]}:00+09:00`);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
 
 export default function ReservationsScreen() {
   const { user } = useAuth();
@@ -57,7 +51,8 @@ export default function ReservationsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showRequest, setShowRequest] = useState(false);
-  const [reqMenu, setReqMenu] = useState("");
+  const [menuMasters, setMenuMasters] = useState<MenuMaster[]>([]);
+  const [reqMenuId, setReqMenuId] = useState("");
   const [reqDate, setReqDate] = useState("");
   const [reqLoading, setReqLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -75,6 +70,7 @@ export default function ReservationsScreen() {
     return () => { active = false; };
   }, [user]);
 
+  // 予約一覧
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
@@ -82,7 +78,6 @@ export default function ReservationsScreen() {
       setLoading(true);
       setError(null);
       try {
-        // 顧客の Be:note から予約ノードを取得（過去 + 未来）
         const res = await apiFetch(
           `/api/v1/clients/${clientId}/notes?per_page=30`
         );
@@ -116,6 +111,17 @@ export default function ReservationsScreen() {
     return () => { cancelled = true; };
   }, [clientId, refreshKey]);
 
+  // リクエストフォームを開いたときにメニュー一覧を取得
+  useEffect(() => {
+    if (!showRequest || menuMasters.length > 0) return;
+    let cancelled = false;
+    apiFetch("/api/v1/menus")
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setMenuMasters(j.data ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [showRequest, menuMasters.length]);
+
   async function handleCancel(noteId: string) {
     Alert.alert("キャンセル確認", "この予約をキャンセルしますか？", [
       { text: "戻る", style: "cancel" },
@@ -145,8 +151,13 @@ export default function ReservationsScreen() {
   }
 
   async function handleRequest() {
-    if (!clientId || !reqMenu.trim() || !reqDate.trim()) {
-      Alert.alert("入力エラー", "メニューと希望日時を入力してください。");
+    if (!reqMenuId) {
+      Alert.alert("入力エラー", "メニューを選択してください。");
+      return;
+    }
+    const desiredStart = parseJstToIso(reqDate);
+    if (!desiredStart) {
+      Alert.alert("入力エラー", "日時は「YYYY-MM-DD HH:MM」形式で入力してください。\n例: 2026-07-10 11:00");
       return;
     }
     setReqLoading(true);
@@ -155,20 +166,19 @@ export default function ReservationsScreen() {
         method: "POST",
         headers: { "Idempotency-Key": generateUuid() },
         body: JSON.stringify({
-          client_id: clientId,
-          preferred_date: reqDate.trim(),
-          main_menu: reqMenu.trim(),
+          menu_master_id: reqMenuId,
+          desired_start: desiredStart,
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error?.message ?? "申込に失敗しました。");
       }
-      setReqMenu("");
+      setReqMenuId("");
       setReqDate("");
       setShowRequest(false);
       Alert.alert("申込完了", "リクエスト予約を申し込みました。");
-      fetchReservations();
+      setRefreshKey((k) => k + 1);
     } catch (e) {
       Alert.alert("エラー", e instanceof Error ? e.message : "申込に失敗しました。");
     } finally {
@@ -201,22 +211,48 @@ export default function ReservationsScreen() {
       {/* リクエストフォーム */}
       {showRequest && (
         <View style={styles.requestForm}>
+          <Text style={styles.formLabel}>メニューを選択</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.menuScroll}>
+            {menuMasters.map((m) => (
+              <TouchableOpacity
+                key={m.menu_master_id}
+                onPress={() => setReqMenuId(m.menu_master_id)}
+                style={[
+                  styles.menuChip,
+                  reqMenuId === m.menu_master_id && styles.menuChipActive,
+                ]}
+              >
+                <Text style={[
+                  styles.menuChipText,
+                  reqMenuId === m.menu_master_id && styles.menuChipTextActive,
+                ]}>
+                  {m.menu_name}
+                </Text>
+                <Text style={[
+                  styles.menuChipPrice,
+                  reqMenuId === m.menu_master_id && styles.menuChipTextActive,
+                ]}>
+                  ¥{m.base_price.toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {menuMasters.length === 0 && (
+              <Text style={styles.menuEmptyText}>メニューを読み込み中…</Text>
+            )}
+          </ScrollView>
+
+          <Text style={styles.formLabel}>ご希望日時（JST）</Text>
           <TextInput
             style={styles.input}
-            placeholder="ご希望メニュー"
-            value={reqMenu}
-            onChangeText={setReqMenu}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="ご希望日時（例: 2026-07-10 11:00）"
+            placeholder="例: 2026-07-10 11:00"
             value={reqDate}
             onChangeText={setReqDate}
+            keyboardType="numeric"
           />
           <TouchableOpacity
             onPress={handleRequest}
-            disabled={reqLoading}
-            style={[styles.submitBtn, reqLoading && styles.submitBtnDisabled]}
+            disabled={reqLoading || !reqMenuId}
+            style={[styles.submitBtn, (reqLoading || !reqMenuId) && styles.submitBtnDisabled]}
           >
             <Text style={styles.submitBtnText}>
               {reqLoading ? "申込中…" : "申し込む"}
@@ -301,6 +337,27 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e2e8f0",
     gap: 10,
   },
+  formLabel: { fontSize: 12, fontWeight: "600", color: "#64748b" },
+  menuScroll: { marginBottom: 4 },
+  menuChip: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    minWidth: 80,
+  },
+  menuChipActive: {
+    borderColor: "#4f46e5",
+    backgroundColor: "#eef2ff",
+  },
+  menuChipText: { fontSize: 13, color: "#374151", fontWeight: "500" },
+  menuChipTextActive: { color: "#4f46e5", fontWeight: "700" },
+  menuChipPrice: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
+  menuEmptyText: { fontSize: 13, color: "#94a3b8", alignSelf: "center", paddingVertical: 8 },
   input: {
     borderWidth: 1,
     borderColor: "#e2e8f0",
