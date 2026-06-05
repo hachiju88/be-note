@@ -69,7 +69,7 @@ export const GET = apiRoute(
         .gte("reservation_start", startUtc)
         .lt("reservation_start", endUtc),
     ]);
-    if (doneRes.error) {
+    if (doneRes.error || cancelledRes.error || noShowRes.error) {
       throw new ApiError("INTERNAL_ERROR", "予約集計の取得に失敗しました。");
     }
     const done = doneRes.data ?? [];
