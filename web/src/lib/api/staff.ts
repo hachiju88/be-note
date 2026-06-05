@@ -23,3 +23,30 @@ export function staffRef(
 ): { staff_id: string; staff_name: string | null } {
   return { staff_id: staffId, staff_name: names.get(staffId) ?? null };
 }
+
+/**
+ * 指定 staff_id がすべて自サロンの有効スタッフか検証する（越境指定の防止）。
+ * 1件でも自サロンに無ければ INVALID_PARAMS。
+ */
+export async function assertStaffInSalon(
+  svc: SupabaseClient,
+  staffIds: string[],
+  salonId: string,
+): Promise<void> {
+  if (staffIds.length === 0) return;
+  const { data, error } = await svc
+    .from("t_staff")
+    .select("staff_id")
+    .in("staff_id", staffIds)
+    .eq("salon_id", salonId)
+    .eq("delete_flg", false);
+  if (error) {
+    throw new ApiError("INTERNAL_ERROR", "スタッフ情報の取得に失敗しました。");
+  }
+  const found = new Set((data ?? []).map((s) => s.staff_id));
+  for (const id of staffIds) {
+    if (!found.has(id)) {
+      throw new ApiError("INVALID_PARAMS", "指定されたスタッフが見つかりません。");
+    }
+  }
+}

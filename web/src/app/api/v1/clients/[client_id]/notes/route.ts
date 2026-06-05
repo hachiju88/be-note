@@ -10,7 +10,16 @@ import {
 } from "@/lib/api/validate";
 import { assertClientAccess } from "@/lib/api/ownership";
 import { toNoteTypeCode, toNoteTypeId } from "@/lib/api/note-type";
-import { fetchStaffNames, staffRef } from "@/lib/api/staff";
+import {
+  assertStaffInSalon,
+  fetchStaffNames,
+  staffRef,
+} from "@/lib/api/staff";
+import {
+  isDetailNoteType,
+  mapNoteDetailError,
+  parseNoteDetails,
+} from "@/lib/api/note-detail";
 
 type Params = { client_id: string };
 
@@ -75,14 +84,21 @@ export const GET = apiRoute<Params>(
   { roles: ["staff", "admin", "customer"] },
 );
 
-// この PR で作成に対応する note_type（reservation は 4.4・予約二重防御で、
-// item/discount/photo はリクエスト形が設計書未定義のため後続で対応）。
-const CREATABLE_NOTE_TYPES = ["head", "text"] as const;
+// 作成に対応する note_type（reservation は POST /reservations・予約二重防御で扱う）。
+// item/discount/photo はノード＋明細を RPC で原子的に作成する。
+const CREATABLE_NOTE_TYPES = [
+  "head",
+  "text",
+  "item",
+  "discount",
+  "photo",
+] as const;
 
 /**
  * POST /api/v1/clients/{client_id}/notes — Be:note 作成（staff / admin）。
- * 現状は head（新規来店ノード）と text（DM メッセージ）に対応する。
- * Be:note は head を親とする木構造。
+ * head（新規来店ノード）/ text（DM）/ item（物販）/ discount（割引）/ photo（写真）に対応。
+ * item/discount/photo はノード＋明細（t_sold_item / t_discount / t_photo）を
+ * RPC create_note_with_details で原子的に作成する。Be:note は head を親とする木構造。
  */
 export const POST = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
@@ -141,6 +157,35 @@ export const POST = apiRoute<Params>(
       }
     }
 
+    // item / discount / photo: ノード＋明細を RPC で原子的に作成する。
+    if (isDetailNoteType(noteTypeCode)) {
+      const { details, staffIds } = parseNoteDetails(
+        noteTypeCode,
+        body,
+        auth.staffId, // 明細 staff_id 省略時の既定（ノードの主担当）。
+      );
+      await assertStaffInSalon(svc, staffIds, auth.salonId);
+
+      const { data, error } = await svc.rpc("create_note_with_details", {
+        payload: {
+          note_type_id: toNoteTypeId(noteTypeCode),
+          p_note_id: pNoteId, // 非 head は上で必須・head 検証済み。
+          salon_id: auth.salonId,
+          client_id: params.client_id,
+          responsible: auth.staffId,
+          future_flg: futureFlg,
+          details,
+        },
+      });
+      if (error) mapNoteDetailError(error);
+      const noteId = (data as { note_id?: string } | null)?.note_id;
+      if (!noteId) {
+        throw new ApiError("INTERNAL_ERROR", "Be:note の作成に失敗しました。");
+      }
+      return ok({ note_id: noteId }, 201);
+    }
+
+    // head / text は単一テーブル insert。
     const insert: Record<string, unknown> = {
       p_note_id: pNoteId,
       note_type: toNoteTypeId(noteTypeCode),
