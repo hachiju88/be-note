@@ -103,14 +103,41 @@ const CREATABLE_NOTE_TYPES = [
 export const POST = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
     assertUuid(params.client_id, "client_id");
-    if (!auth.staffId || !auth.salonId) {
+
+    const isCustomer = auth.role === "customer";
+
+    // customer は自分の client_id のみ操作可。
+    if (isCustomer) {
+      assertClientAccess(auth, params.client_id);
+    } else if (!auth.staffId || !auth.salonId) {
       throw new ApiError("INTERNAL_ERROR", "スタッフ情報が取得できません。");
     }
+
+    // customer の salonId を t_client_salon から解決（auth.salonId は null）。
+    let salonId = auth.salonId;
+    if (!salonId && auth.clientId) {
+      const { data } = await svc
+        .from("t_client_salon")
+        .select("salon_id")
+        .eq("client_id", auth.clientId)
+        .limit(1)
+        .maybeSingle();
+      salonId = data?.salon_id ?? null;
+    }
+    if (!salonId) throw new ApiError("FORBIDDEN", "サロン情報が取得できません。");
 
     const body = await parseJsonObject(req);
 
     const noteTypeCode = String(body.note_type);
     toNoteTypeId(noteTypeCode); // 既知の note_type か検証（不正なら INVALID_PARAMS）。
+
+    // customer は text / photo のみ作成可。
+    if (isCustomer && noteTypeCode !== "text" && noteTypeCode !== "photo") {
+      throw new ApiError(
+        "FORBIDDEN",
+        "顧客が作成できる note_type は text / photo のみです。",
+      );
+    }
     if (!(CREATABLE_NOTE_TYPES as readonly string[]).includes(noteTypeCode)) {
       throw new ApiError(
         "INVALID_PARAMS",
@@ -162,17 +189,19 @@ export const POST = apiRoute<Params>(
       const { details, staffIds } = parseNoteDetails(
         noteTypeCode,
         body,
-        auth.staffId, // 明細 staff_id 省略時の既定（ノードの主担当）。
+        auth.staffId ?? null, // customer は staffId が null。
       );
-      await assertStaffInSalon(svc, staffIds, auth.salonId);
+      if (staffIds.length > 0) {
+        await assertStaffInSalon(svc, staffIds, salonId);
+      }
 
       const { data, error } = await svc.rpc("create_note_with_details", {
         payload: {
           note_type_id: toNoteTypeId(noteTypeCode),
           p_note_id: pNoteId, // 非 head は上で必須・head 検証済み。
-          salon_id: auth.salonId,
+          salon_id: salonId,
           client_id: params.client_id,
-          responsible: auth.staffId,
+          responsible: auth.staffId ?? null, // customer は null。
           future_flg: futureFlg,
           details,
         },
@@ -189,15 +218,15 @@ export const POST = apiRoute<Params>(
     const insert: Record<string, unknown> = {
       p_note_id: pNoteId,
       note_type: toNoteTypeId(noteTypeCode),
-      salon_id: auth.salonId,
+      salon_id: salonId,
       client_id: params.client_id,
-      responsible: auth.staffId,
+      responsible: auth.staffId ?? null, // customer は null。
       future_flg: futureFlg,
     };
     if (noteTypeCode === "text") {
-      insert.is_client = false; // staff/admin 作成の DM（顧客発はモバイル側）。
+      insert.is_client = isCustomer; // customer 発=true、staff/admin 発=false。
       insert.text = requireString(body.text, "text", 300);
-      insert.read_flg = false; // 受信側（顧客）未読。
+      insert.read_flg = false;
     }
 
     const { data: created, error } = await svc
@@ -211,7 +240,7 @@ export const POST = apiRoute<Params>(
 
     return ok({ note_id: created.note_id }, 201);
   },
-  { roles: ["staff", "admin"] },
+  { roles: ["staff", "admin", "customer"] },
 );
 
 /** JSON 真偽値（未指定は undefined、非 boolean は INVALID_PARAMS）。 */

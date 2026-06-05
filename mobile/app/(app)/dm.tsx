@@ -1,6 +1,7 @@
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -10,13 +11,18 @@ import {
   View,
 } from "react-native";
 import { useEffect, useRef, useState } from "react";
-import { apiFetch, toJstDatetime } from "@/lib/apiFetch";
+import * as ImagePicker from "expo-image-picker";
+import { apiFetch, generateUuid, toJstDatetime } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 
+const PHOTO_BUCKET = "be-note-photos";
+
 type DmMessage = {
   note_id: string;
-  text: string;
+  note_type: "text" | "photo";
+  text?: string;
+  photo_url?: string;
   is_client: boolean;
   creation_datetime: string;
 };
@@ -58,7 +64,6 @@ export default function DmScreen() {
       setLoading(true);
       setError(null);
       try {
-        // 最新の head ノードを取得し、そのテキスト children を DM として表示する
         const res = await apiFetch(
           `/api/v1/clients/${clientId}/notes?future_flg=false&per_page=1`
         );
@@ -72,15 +77,35 @@ export default function DmScreen() {
         const latestHead = heads[0];
         if (!cancelled) setHeadNoteId(latestHead.note_id);
 
-        const textChildren = latestHead.children
-          .filter((c) => c.note_type === "text")
+        const dmChildren = latestHead.children
+          .filter((c) => c.note_type === "text" || c.note_type === "photo")
+          .slice(-20)
           .map((c) => c.note_id);
 
         const details = await Promise.all(
-          textChildren.slice(-20).map((noteId) =>
+          dmChildren.map((noteId) =>
             apiFetch(`/api/v1/clients/${clientId}/notes/${noteId}`)
               .then((r) => r.json())
-              .then((j) => ({ note_id: noteId, ...j.data } as DmMessage))
+              .then((j): DmMessage | null => {
+                const d = j.data;
+                if (!d) return null;
+                if (d.note_type === "photo") {
+                  return {
+                    note_id: noteId,
+                    note_type: "photo",
+                    photo_url: d.photo_list?.[0]?.url ?? undefined,
+                    is_client: d.is_client ?? false,
+                    creation_datetime: d.creation_datetime,
+                  };
+                }
+                return {
+                  note_id: noteId,
+                  note_type: "text",
+                  text: d.text,
+                  is_client: d.is_client ?? false,
+                  creation_datetime: d.creation_datetime,
+                };
+              })
               .catch(() => null)
           )
         );
@@ -119,7 +144,6 @@ export default function DmScreen() {
           note_type: "text",
           p_note_id: headNoteId,
           text: text.trim(),
-          is_client: true,
         }),
       });
       if (!res.ok) throw new Error("送信失敗");
@@ -128,6 +152,7 @@ export default function DmScreen() {
         ...prev,
         {
           note_id: data.note_id,
+          note_type: "text",
           text: text.trim(),
           is_client: true,
           creation_datetime: new Date().toISOString(),
@@ -136,6 +161,69 @@ export default function DmScreen() {
       setText("");
     } catch {
       setError("送信に失敗しました。");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendPhoto() {
+    if (!clientId || !headNoteId) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      setError("写真へのアクセス許可が必要です。");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      quality: 0.7,
+      allowsMultipleSelection: false,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+
+    setSending(true);
+    setError(null);
+    try {
+      const asset = result.assets[0];
+      const ext = asset.mimeType?.includes("png") ? "png" : "jpg";
+      const path = `dm/${clientId}/${generateUuid()}.${ext}`;
+
+      // URI → Blob → Supabase Storage upload
+      const blob = await fetch(asset.uri).then((r) => r.blob());
+      const { error: uploadError } = await supabase.storage
+        .from(PHOTO_BUCKET)
+        .upload(path, blob, {
+          contentType: asset.mimeType ?? "image/jpeg",
+          upsert: false,
+        });
+      if (uploadError) throw new Error("写真のアップロードに失敗しました。");
+
+      // Storage path を API に渡して photo ノートを作成
+      const res = await apiFetch(`/api/v1/clients/${clientId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({
+          note_type: "photo",
+          p_note_id: headNoteId,
+          photo_list: [{ storage_path: path }],
+        }),
+      });
+      if (!res.ok) throw new Error("写真の送信に失敗しました。");
+      const { data } = await res.json();
+
+      // 表示用に一時的にローカル URI を使用（再フェッチで署名付き URL に置き換わる）
+      setMessages((prev) => [
+        ...prev,
+        {
+          note_id: data.note_id,
+          note_type: "photo",
+          photo_url: asset.uri,
+          is_client: true,
+          creation_datetime: new Date().toISOString(),
+        },
+      ]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "写真の送信に失敗しました。");
     } finally {
       setSending(false);
     }
@@ -180,14 +268,22 @@ export default function DmScreen() {
               item.is_client ? styles.bubbleClient : styles.bubbleStaff,
             ]}
           >
-            <Text
-              style={[
-                styles.bubbleText,
-                item.is_client ? styles.bubbleTextClient : styles.bubbleTextStaff,
-              ]}
-            >
-              {item.text}
-            </Text>
+            {item.note_type === "photo" && item.photo_url ? (
+              <Image
+                source={{ uri: item.photo_url }}
+                style={styles.photoImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text
+                style={[
+                  styles.bubbleText,
+                  item.is_client ? styles.bubbleTextClient : styles.bubbleTextStaff,
+                ]}
+              >
+                {item.text}
+              </Text>
+            )}
             <Text
               style={[
                 styles.bubbleTime,
@@ -201,6 +297,13 @@ export default function DmScreen() {
       />
 
       <View style={styles.inputRow}>
+        <TouchableOpacity
+          onPress={sendPhoto}
+          disabled={sending}
+          style={[styles.photoBtn, sending && styles.sendBtnDisabled]}
+        >
+          <Text style={styles.photoBtnText}>📷</Text>
+        </TouchableOpacity>
         <TextInput
           style={styles.input}
           value={text}
@@ -254,20 +357,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 2,
   },
-  bubbleClient: {
-    alignSelf: "flex-start",
-    backgroundColor: "#f1f5f9",
-  },
-  bubbleStaff: {
-    alignSelf: "flex-end",
-    backgroundColor: "#4f46e5",
-  },
+  bubbleClient: { alignSelf: "flex-start", backgroundColor: "#f1f5f9" },
+  bubbleStaff: { alignSelf: "flex-end", backgroundColor: "#4f46e5" },
   bubbleText: { fontSize: 14 },
   bubbleTextClient: { color: "#1e293b" },
   bubbleTextStaff: { color: "#fff" },
   bubbleTime: { fontSize: 11 },
   bubbleTimeClient: { color: "#94a3b8" },
   bubbleTimeStaff: { color: "#c7d2fe" },
+  photoImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 10,
+  },
   inputRow: {
     flexDirection: "row",
     gap: 8,
@@ -277,6 +379,15 @@ const styles = StyleSheet.create({
     borderTopColor: "#e2e8f0",
     alignItems: "flex-end",
   },
+  photoBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoBtnText: { fontSize: 18 },
   input: {
     flex: 1,
     borderWidth: 1,
