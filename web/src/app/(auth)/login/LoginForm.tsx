@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useSearchParams } from "next/navigation";
 import {
   signInWithPassword,
   signInWithOAuth,
+  signOut,
   type LoginState,
 } from "./actions";
 
@@ -19,7 +19,6 @@ const INITIAL_STATE: LoginState = { error: null };
  */
 export default function LoginForm() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const next = searchParams.get("next") ?? "/menu";
   const urlError = searchParams.get("error");
 
@@ -28,13 +27,6 @@ export default function LoginForm() {
     INITIAL_STATE,
   );
 
-  async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
   // forbidden: customer など権限なしユーザーがリダイレクトされてきた場合
   if (urlError === "forbidden") {
     return (
@@ -42,12 +34,14 @@ export default function LoginForm() {
         <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
           このアカウントには管理ツールへのアクセス権がありません。
         </p>
-        <button
-          onClick={handleSignOut}
-          className="w-full rounded border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          サインアウト
-        </button>
+        <form action={signOut}>
+          <button
+            type="submit"
+            className="w-full rounded border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            サインアウト
+          </button>
+        </form>
       </div>
     );
   }

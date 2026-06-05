@@ -66,3 +66,13 @@ export async function signInWithOAuth(formData: FormData): Promise<void> {
 
   redirect(data.url);
 }
+
+/**
+ * サインアウト Server Action。
+ * サーバー側で Cookie を削除してからログイン画面へリダイレクトする。
+ */
+export async function signOut(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
+}
