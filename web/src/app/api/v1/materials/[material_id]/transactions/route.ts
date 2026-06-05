@@ -44,6 +44,9 @@ async function assertMaterialInSalon(
  */
 export const GET = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
+    if (!auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "サロン情報が取得できません。");
+    }
     const materialId = assertUuid(params.material_id, "material_id");
     await assertMaterialInSalon(svc, materialId, auth.salonId);
 
@@ -102,6 +105,9 @@ export const GET = apiRoute<Params>(
  */
 export const POST = apiRoute<Params>(
   async ({ req, auth, svc, params }) => {
+    if (!auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "サロン情報が取得できません。");
+    }
     const materialId = assertUuid(params.material_id, "material_id");
     if (!auth.staffId) {
       throw new ApiError("INTERNAL_ERROR", "操作スタッフが特定できません。");

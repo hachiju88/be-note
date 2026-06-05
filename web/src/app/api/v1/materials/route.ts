@@ -21,6 +21,9 @@ type MaterialRow = {
  */
 export const GET = apiRoute(
   async ({ req, auth, svc }) => {
+    if (!auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "サロン情報が取得できません。");
+    }
     const lowStockOnly =
       new URL(req.url).searchParams.get("low_stock_only") === "true";
 
@@ -35,8 +38,18 @@ export const GET = apiRoute(
     }
 
     const rows = (data ?? []) as unknown as MaterialRow[];
+    // numeric(10,2) は数値として扱う（比較・出力を文字列依存にしない）。
     const result = rows
-      .map((m) => ({ ...m, low_stock: m.current_stock <= m.reorder_point }))
+      .map((m) => {
+        const currentStock = Number(m.current_stock);
+        const reorderPoint = Number(m.reorder_point);
+        return {
+          ...m,
+          current_stock: currentStock,
+          reorder_point: reorderPoint,
+          low_stock: currentStock <= reorderPoint,
+        };
+      })
       .filter((m) => !lowStockOnly || m.low_stock);
     return ok(result);
   },
@@ -49,6 +62,9 @@ export const GET = apiRoute(
  */
 export const POST = apiRoute(
   async ({ req, auth, svc }) => {
+    if (!auth.salonId) {
+      throw new ApiError("INTERNAL_ERROR", "サロン情報が取得できません。");
+    }
     const body = await parseJsonObject(req);
     const row = { ...DEF.buildInsert(body), salon_id: auth.salonId };
     const { data, error } = await svc

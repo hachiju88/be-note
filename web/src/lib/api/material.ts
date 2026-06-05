@@ -24,9 +24,14 @@ export function mapMaterialRpcError(error: {
       "transaction_type は in / out / adjust のいずれかで指定してください。",
     );
   }
-  // FK 違反など。
+  // FK・チェック制約違反。
   if (error.code === "23503" || error.code === "23514") {
     throw new ApiError("INVALID_PARAMS", "入力値が不正です（参照先または制約違反）。");
+  }
+  // RPC が raise した業務エラー（P0001）でトークン未一致のものは 400 扱い
+  // （500 に丸めない。新トークン追加時の取りこぼし防止）。
+  if (error.code === "P0001") {
+    throw new ApiError("INVALID_PARAMS", "入出庫の登録に失敗しました（入力値をご確認ください）。");
   }
   throw new ApiError("INTERNAL_ERROR", "入出庫の登録に失敗しました。");
 }
