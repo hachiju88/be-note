@@ -24,6 +24,13 @@ jobs:
         working-directory: mobile
         run: npm install --legacy-peer-deps
 
+      - name: Initialize EAS project (if not linked)
+        working-directory: mobile
+        run: npx eas-cli init --non-interactive --force
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        continue-on-error: true
+
       - name: Build Android APK (preview)
         working-directory: mobile
         run: npx eas-cli build --platform android --profile preview --non-interactive
