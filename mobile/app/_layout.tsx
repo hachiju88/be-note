@@ -1,3 +1,5 @@
+import "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useEffect } from "react";
@@ -23,10 +25,12 @@ function RootGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootGuard>
-        <Stack screenOptions={{ headerShown: false }} />
-      </RootGuard>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootGuard>
+          <Stack screenOptions={{ headerShown: false }} />
+        </RootGuard>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
