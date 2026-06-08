@@ -6,6 +6,15 @@ on:
     paths:
       - 'mobile/**'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        required: false
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - debug
 
 jobs:
   build:
@@ -31,8 +40,8 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         continue-on-error: true
 
-      - name: Build Android APK (preview)
+      - name: Build Android APK
         working-directory: mobile
-        run: npx eas-cli build --platform android --profile preview --non-interactive
+        run: npx eas-cli build --platform android --profile ${{ inputs.profile || 'preview' }} --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
