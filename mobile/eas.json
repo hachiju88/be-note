@@ -3,6 +3,17 @@
     "version": ">= 16.0.0"
   },
   "build": {
+    "debug": {
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://be-note-hazel.vercel.app",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ffoaeguofuddoucjlcwh.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_lu-_SJaMO22erdXybQVSDQ_OwMeZUSW"
+      }
+    },
     "preview": {
       "android": {
         "buildType": "apk"

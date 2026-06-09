@@ -36,6 +36,14 @@
         {
           "photosPermission": "写真へのアクセスを許可してください。"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "newArchEnabled": false
+          }
+        }
       ]
     ],
     "experiments": {
