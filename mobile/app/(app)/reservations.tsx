@@ -248,7 +248,6 @@ export default function ReservationsScreen() {
             placeholderTextColor="#94a3b8"
             value={reqDate}
             onChangeText={setReqDate}
-            keyboardType="numeric"
           />
           <TouchableOpacity
             onPress={handleRequest}
