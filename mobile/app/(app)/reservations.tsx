@@ -245,9 +245,9 @@ export default function ReservationsScreen() {
           <TextInput
             style={styles.input}
             placeholder="例: 2026-07-10 11:00"
+            placeholderTextColor="#94a3b8"
             value={reqDate}
             onChangeText={setReqDate}
-            keyboardType="numeric"
           />
           <TouchableOpacity
             onPress={handleRequest}
@@ -366,6 +366,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     backgroundColor: "#f8fafc",
+    color: "#1e293b",
   },
   submitBtn: {
     backgroundColor: "#4f46e5",
