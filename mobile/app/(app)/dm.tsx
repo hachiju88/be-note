@@ -309,6 +309,7 @@ export default function DmScreen() {
           value={text}
           onChangeText={setText}
           placeholder="メッセージを入力…"
+          placeholderTextColor="#94a3b8"
           multiline
           editable={!sending}
         />
@@ -399,6 +400,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     maxHeight: 100,
     backgroundColor: "#f8fafc",
+    color: "#1e293b",
   },
   sendBtn: {
     backgroundColor: "#4f46e5",
