@@ -56,12 +56,15 @@ export default function BeNoteScreen() {
       .eq("user_id", user.id)
       .eq("delete_flg", false)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(
+      ({ data }) => {
         if (active) {
           setClientId(data?.client_id ?? null);
           if (!data?.client_id) setLoading(false);
         }
-      });
+      },
+      () => { if (active) setLoading(false); },
+    );
     return () => { active = false; };
   }, [user]);
 
