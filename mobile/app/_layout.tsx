@@ -4,9 +4,8 @@ import { Stack } from "expo-router";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import React, { useEffect } from "react";
 import { useRouter, useSegments } from "expo-router";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text } from "react-native";
 
-// JS 例外をすべてキャッチして Alert に出す（デバッグ用）
 if (typeof ErrorUtils !== "undefined") {
   const prev = ErrorUtils.getGlobalHandler();
   ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
