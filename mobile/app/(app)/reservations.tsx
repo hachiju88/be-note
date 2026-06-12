@@ -2,18 +2,18 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { useEffect, useState } from "react";
 import { apiFetch, toJstDatetime, generateUuid } from "@/lib/apiFetch";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { STATUS_LABEL, STATUS_COLOR } from "@/lib/reservationStatus";
+import { DatePicker } from "@/components/DatePicker";
 
 type Reservation = {
   note_id: string;
@@ -36,12 +36,11 @@ type MenuMaster = {
   duration_minutes: number;
 };
 
-/** "YYYY-MM-DD HH:MM" 形式（JST）を UTC ISO 文字列に変換する。 */
-function parseJstToIso(jstStr: string): string | null {
-  const m = jstStr.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
-  if (!m) return null;
-  const d = new Date(`${m[1]}T${m[2]}:00+09:00`);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+type Slot = { start: string; end: string };
+
+function dateToJstStr(d: Date): string {
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
 }
 
 export default function ReservationsScreen() {
@@ -52,8 +51,12 @@ export default function ReservationsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showRequest, setShowRequest] = useState(false);
   const [menuMasters, setMenuMasters] = useState<MenuMaster[]>([]);
+  const [menuLoadError, setMenuLoadError] = useState<string | null>(null);
   const [reqMenuId, setReqMenuId] = useState("");
-  const [reqDate, setReqDate] = useState("");
+  const [reqDate, setReqDate] = useState<Date | null>(null);
+  const [availableSlots, setAvailableSlots] = useState<Slot[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [reqLoading, setReqLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -123,12 +126,38 @@ export default function ReservationsScreen() {
   useEffect(() => {
     if (!showRequest || menuMasters.length > 0) return;
     let cancelled = false;
+    setMenuLoadError(null);
     apiFetch("/api/v1/menus")
       .then((r) => r.json())
       .then((j) => { if (!cancelled) setMenuMasters(j.data ?? []); })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        if (!cancelled) setMenuLoadError(e instanceof Error ? e.message : "メニューの取得に失敗しました。");
+      });
     return () => { cancelled = true; };
   }, [showRequest, menuMasters.length]);
+
+  // メニューまたは日付が変わったら空き枠を再取得
+  useEffect(() => {
+    if (!reqMenuId || !reqDate) {
+      setAvailableSlots([]);
+      setSelectedSlot(null);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    const dateStr = dateToJstStr(reqDate);
+    apiFetch(`/api/v1/availability?date=${dateStr}&menu_master_id=${reqMenuId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled) {
+          setAvailableSlots((j.data ?? [])[0]?.slots ?? []);
+          setSelectedSlot(null);
+        }
+      })
+      .catch(() => { if (!cancelled) setAvailableSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [reqMenuId, reqDate]);
 
   async function handleCancel(noteId: string) {
     Alert.alert("キャンセル確認", "この予約をキャンセルしますか？", [
@@ -159,13 +188,8 @@ export default function ReservationsScreen() {
   }
 
   async function handleRequest() {
-    if (!reqMenuId) {
-      Alert.alert("入力エラー", "メニューを選択してください。");
-      return;
-    }
-    const desiredStart = parseJstToIso(reqDate);
-    if (!desiredStart) {
-      Alert.alert("入力エラー", "日時は「YYYY-MM-DD HH:MM」形式で入力してください。\n例: 2026-07-10 11:00");
+    if (!reqMenuId || !selectedSlot) {
+      Alert.alert("入力エラー", "メニューと希望日時を選択してください。");
       return;
     }
     setReqLoading(true);
@@ -175,7 +199,7 @@ export default function ReservationsScreen() {
         headers: { "Idempotency-Key": generateUuid() },
         body: JSON.stringify({
           menu_master_id: reqMenuId,
-          desired_start: desiredStart,
+          desired_start: selectedSlot,
         }),
       });
       if (!res.ok) {
@@ -183,7 +207,9 @@ export default function ReservationsScreen() {
         throw new Error(body?.error?.message ?? "申込に失敗しました。");
       }
       setReqMenuId("");
-      setReqDate("");
+      setReqDate(null);
+      setSelectedSlot(null);
+      setAvailableSlots([]);
       setShowRequest(false);
       Alert.alert("申込完了", "リクエスト予約を申し込みました。");
       setRefreshKey((k) => k + 1);
@@ -220,47 +246,84 @@ export default function ReservationsScreen() {
       {showRequest && (
         <View style={styles.requestForm}>
           <Text style={styles.formLabel}>メニューを選択</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.menuScroll}>
-            {menuMasters.map((m) => (
-              <TouchableOpacity
-                key={m.menu_master_id}
-                onPress={() => setReqMenuId(m.menu_master_id)}
-                style={[
-                  styles.menuChip,
-                  reqMenuId === m.menu_master_id && styles.menuChipActive,
-                ]}
-              >
-                <Text style={[
-                  styles.menuChipText,
-                  reqMenuId === m.menu_master_id && styles.menuChipTextActive,
-                ]}>
-                  {m.menu_name}
-                </Text>
-                <Text style={[
-                  styles.menuChipPrice,
-                  reqMenuId === m.menu_master_id && styles.menuChipTextActive,
-                ]}>
-                  ¥{m.base_price.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            {menuMasters.length === 0 && (
-              <Text style={styles.menuEmptyText}>メニューを読み込み中…</Text>
-            )}
-          </ScrollView>
+          {menuLoadError ? (
+            <Text style={styles.menuErrorText}>{menuLoadError}</Text>
+          ) : menuMasters.length === 0 ? (
+            <Text style={styles.menuEmptyText}>読み込み中…</Text>
+          ) : (
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={menuMasters}
+              keyExtractor={(m) => m.menu_master_id}
+              style={styles.menuScroll}
+              renderItem={({ item: m }) => (
+                <TouchableOpacity
+                  key={m.menu_master_id}
+                  onPress={() => setReqMenuId(m.menu_master_id)}
+                  style={[
+                    styles.menuChip,
+                    reqMenuId === m.menu_master_id && styles.menuChipActive,
+                  ]}
+                >
+                  <Text style={[
+                    styles.menuChipText,
+                    reqMenuId === m.menu_master_id && styles.menuChipTextActive,
+                  ]}>
+                    {m.menu_name}
+                  </Text>
+                  <Text style={[
+                    styles.menuChipPrice,
+                    reqMenuId === m.menu_master_id && styles.menuChipTextActive,
+                  ]}>
+                    ¥{m.base_price.toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
 
-          <Text style={styles.formLabel}>ご希望日時（JST）</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="例: 2026-07-10 11:00"
-            placeholderTextColor="#94a3b8"
+          <Text style={styles.formLabel}>ご希望日付</Text>
+          <DatePicker
             value={reqDate}
-            onChangeText={setReqDate}
+            onChange={setReqDate}
+            minimumDate={new Date()}
           />
+
+          {reqDate && reqMenuId && (
+            <>
+              <Text style={styles.formLabel}>ご希望時間</Text>
+              {slotsLoading ? (
+                <ActivityIndicator color="#4f46e5" style={{ marginVertical: 8 }} />
+              ) : availableSlots.length === 0 ? (
+                <Text style={styles.menuEmptyText}>この日は予約可能な時間帯がありません。</Text>
+              ) : (
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={selectedSlot ?? ""}
+                    onValueChange={(v) => setSelectedSlot(v || null)}
+                    style={styles.picker}
+                    dropdownIconColor="#64748b"
+                  >
+                    <Picker.Item label="時間を選択" value="" color="#94a3b8" />
+                    {availableSlots.map((slot) => (
+                      <Picker.Item
+                        key={slot.start}
+                        label={toJstDatetime(slot.start).slice(11)}
+                        value={slot.start}
+                        color="#1e293b"
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              )}
+            </>
+          )}
+
           <TouchableOpacity
             onPress={handleRequest}
-            disabled={reqLoading || !reqMenuId}
-            style={[styles.submitBtn, (reqLoading || !reqMenuId) && styles.submitBtnDisabled]}
+            disabled={reqLoading || !reqMenuId || !selectedSlot}
+            style={[styles.submitBtn, (reqLoading || !reqMenuId || !selectedSlot) && styles.submitBtnDisabled]}
           >
             <Text style={styles.submitBtnText}>
               {reqLoading ? "申込中…" : "申し込む"}
@@ -365,22 +428,22 @@ const styles = StyleSheet.create({
   menuChipText: { fontSize: 13, color: "#374151", fontWeight: "500" },
   menuChipTextActive: { color: "#4f46e5", fontWeight: "700" },
   menuChipPrice: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
-  menuEmptyText: { fontSize: 13, color: "#94a3b8", alignSelf: "center", paddingVertical: 8 },
-  input: {
+  menuEmptyText: { fontSize: 13, color: "#94a3b8", paddingVertical: 8 },
+  menuErrorText: { fontSize: 13, color: "#dc2626", paddingVertical: 8 },
+  pickerWrapper: {
     borderWidth: 1,
     borderColor: "#e2e8f0",
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
     backgroundColor: "#f8fafc",
-    color: "#1e293b",
+    overflow: "hidden",
   },
+  picker: { color: "#1e293b" },
   submitBtn: {
     backgroundColor: "#4f46e5",
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: "center",
+    marginTop: 4,
   },
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { color: "#fff", fontWeight: "600" },
